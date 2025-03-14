@@ -5,7 +5,7 @@ set -e
 validate() {
 	: "${SERVER_TYPE:?SERVER_TYPE variable missing from environment variables.}"
 	if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
-		: "${SSH_USER:?SSH_USER variable missing for custom server.}"
+		: "${SSH_REMOTE:?SSH_REMOTE variable missing for custom server.}"
 		: "${SSH_DEST:?SSH_DEST variable missing for custom server.}"
 		: "${SSH_HOST:?SSH_HOST variable missing for custom server.}"
 	else
@@ -26,21 +26,21 @@ init() {
 	case "${SERVER_TYPE^^}" in
 	PRESSABLE)
 		SSH_HOST="ssh.pressable.com"
-		SSH_USER="${SERVER_ID}@${SSH_HOST}"
+		SSH_REMOTE="${SERVER_ID}@${SSH_HOST}"
 		SERVER_BASE_PATH="~/htdocs"
-		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
+		SERVER_DEST="${SSH_REMOTE}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 		;;
 	WPENGINE)
 		SSH_HOST="${SERVER_ID}.ssh.wpengine.net"
-		SSH_USER="${SERVER_ID}@${SSH_HOST}"
+		SSH_REMOTE="${SERVER_ID}@${SSH_HOST}"
 		SERVER_BASE_PATH="sites/${SERVER_ID}"
-		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
+		SERVER_DEST="${SSH_REMOTE}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 		;;
 	CUSTOM)
 		# For custom, use the provided SSH_USER, SSH_HOST, SSH_DEST and SSH_PORT
 		SSH_PORT="${SSH_PORT:-22}"
-		SSH_USER="${SSH_USER}@${SSH_HOST}"
-		SERVER_DEST="${SSH_USER}:${SSH_DEST}"
+		SSH_REMOTE="${SSH_USER}@${SSH_HOST}"
+		SERVER_DEST="${SSH_REMOTE}:${SSH_DEST}"
 		;;
 	*)
 		echo "❌ Unknown SERVER_TYPE: ${SERVER_TYPE}"
@@ -68,6 +68,7 @@ print_info() {
 		echo "* SERVER_ID: ${SERVER_ID}"
 		echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
 	fi
+	echo "* SSH_REMOTE: ${SSH_REMOTE}"
 	echo "* SSH_PORT: ${SSH_PORT}"
 	echo "* SRC_PATH: ${SRC_PATH}"
 	echo "* PHP_LINT: ${PHP_LINT}"
@@ -126,10 +127,10 @@ check_lint() {
 
 # Sync files to the server using rsync and execute post-deploy script
 sync_files() {
-	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath=${SSH_PATH}/ctl/%C -o ControlMaster=auto -o ControlPersist=600"
+	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
 
 	#create multiplex connection
-	ssh -nNf ${SSH_SETTINGS} -o ControlMaster=yes "${SSH_USER}"
+	ssh -nNf ${SSH_SETTINGS} -o ControlMaster=yes "${SSH_REMOTE}"
 	echo "Multiplex SSH connection established."
 
 	# Sync files to Server
@@ -143,10 +144,10 @@ sync_files() {
 	check_cache
 
 	# Execute post-deploy script
-	ssh ${SSH_SETTINGS} "${SSH_USER}" "${SCRIPT_COMMAND} ${CACHE_COMMAND}"
+	ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "${SCRIPT_COMMAND} ${CACHE_COMMAND}"
 
 	# Close SSH multiplex connection
-	ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_USER}"
+	ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
 	echo "✅ Site has been deployed!"
 }
 
@@ -165,10 +166,10 @@ check_script() {
 		echo "Script command: " ${SCRIPT_COMMAND}
 
 		# Set permissions
-		ssh ${SSH_SETTINGS} "${SSH_USER}" "chmod +x ${SCRIPT_PATH}"
+		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "chmod +x ${SCRIPT_PATH}"
 
 		# Does file exist?
-		ssh ${SSH_SETTINGS} "${SSH_USER}" "if [ -f ${SCRIPT_PATH} ]; then echo 'Script file found'; else echo 'Script file not found'; fi"
+		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "if [ -f ${SCRIPT_PATH}; then echo 'Script file found'; else echo 'Script file not found'; fi"
 	fi
 }
 
