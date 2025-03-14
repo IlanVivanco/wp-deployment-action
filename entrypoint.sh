@@ -148,8 +148,11 @@ sync_files() {
 		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "bash -c '${SCRIPT_COMMAND} ${CACHE_COMMAND}'"
 	fi
 
-	# Close SSH multiplex connection
-	ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
+	# Close SSH multiplex connection if available
+	if ssh -O check -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}" 2>/dev/null; then
+		ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
+	fi
+
 	echo "✅ Site has been deployed!"
 }
 
@@ -158,7 +161,7 @@ check_script() {
 	if [ -n "${SCRIPT}" ]; then
 		if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
 			# Check if the SSH_DEST has a trailing slash
-			if [ "${SSH_DEST}" != */ ]; then
+			if [[ "${SSH_DEST}" != */ ]]; then
 				SSH_DEST="${SSH_DEST}/"
 			fi
 
