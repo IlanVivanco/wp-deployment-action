@@ -40,7 +40,6 @@ init() {
 		# For custom, use the provided SSH_USER, SSH_HOST, SSH_DEST and SSH_PORT
 		SSH_PORT="${SSH_PORT:-22}"
 		SSH_USER="${SSH_USER}@${SSH_HOST}"
-		SERVER_BASE_PATH="${SSH_DEST}"
 		SERVER_DEST="${SSH_USER}:${SSH_DEST}"
 		;;
 	*)
@@ -67,8 +66,8 @@ print_info() {
 		echo "* SSH_DEST: ${SSH_DEST}"
 	else
 		echo "* SERVER_ID: ${SERVER_ID}"
+		echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
 	fi
-	echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
 	echo "* SSH_PORT: ${SSH_PORT}"
 	echo "* SRC_PATH: ${SRC_PATH}"
 	echo "* PHP_LINT: ${PHP_LINT}"
@@ -154,7 +153,11 @@ sync_files() {
 # Check if post-deploy script exists and set permissions
 check_script() {
 	if [ -n "${SCRIPT}" ]; then
-		SCRIPT_PATH="${SERVER_BASE_PATH}/${REMOTE_PATH}/${SCRIPT}"
+		if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
+			SCRIPT_PATH="${SSH_DEST}/${SCRIPT}"
+		else
+			SCRIPT_PATH="${SERVER_BASE_PATH}/${REMOTE_PATH}/${SCRIPT}"
+		fi
 		SCRIPT_COMMAND="bash ${SCRIPT_PATH}"
 		echo "Script command: " ${SCRIPT_COMMAND}
 
