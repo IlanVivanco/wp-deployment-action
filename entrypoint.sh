@@ -154,7 +154,10 @@ sync_files() {
 check_script() {
 	if [ -n "${SCRIPT}" ]; then
 		if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
-			SCRIPT_PATH="${SSH_DEST}/${SCRIPT}"
+			# Check if the SSH_DEST has a trailing slash
+			if [[ "${SSH_DEST}" != */ ]]; then SSH_DEST="${SSH_DEST}/" fi
+
+			SCRIPT_PATH="${SSH_DEST}${SCRIPT}"
 		else
 			SCRIPT_PATH="${SERVER_BASE_PATH}/${REMOTE_PATH}/${SCRIPT}"
 		fi
