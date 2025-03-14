@@ -126,12 +126,6 @@ check_lint() {
 
 # Sync files to the server using rsync and execute post-deploy script
 sync_files() {
-	cleanup_connection() {
-		# Close multiplex connection
-		if ssh -O check -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}" 2>/dev/null; then
-			ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
-		fi
-	}
 	# Catch errors and interrupts to ensure cleanup
 	trap cleanup_connection ERR SIGINT SIGTERM
 
@@ -152,6 +146,13 @@ sync_files() {
 	cleanup_connection
 
 	echo "✅ Site has been deployed!"
+}
+
+# Close multiplex connection
+cleanup_connection() {
+	if ssh -O check -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}" 2>/dev/null; then
+		ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
+	fi
 }
 
 # Check if post-deploy script exists and set permissions
