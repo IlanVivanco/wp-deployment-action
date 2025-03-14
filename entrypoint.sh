@@ -93,11 +93,9 @@ parse_flags() {
 setup_ssh() {
 	echo "Setting SSH path..."
 	SSH_PATH="${HOME}/.ssh"
-	if [ ! -d "${HOME}/.ssh" ]; then
-		mkdir "${HOME}/.ssh"
-		mkdir "${SSH_PATH}/ctl/"
-		chmod -R 700 "$SSH_PATH"
-	fi
+	# Replace manual directory creation with mkdir -p for better safety
+	mkdir -p "${SSH_PATH}/ctl"
+	chmod -R 700 "$SSH_PATH"
 	SSH_KEY_PATH="${SSH_PATH}/deploy_key"
 	umask 077
 	echo "${SSH_PRIVATE_KEY}" >"${SSH_KEY_PATH}"
@@ -159,20 +157,18 @@ check_script() {
 			if [[ "${SSH_DEST}" != */ ]]; then
 				SSH_DEST="${SSH_DEST}/"
 			fi
-
 			SCRIPT_PATH="${SSH_DEST}${SCRIPT}"
 		else
 			SCRIPT_PATH="${SERVER_BASE_PATH}/${REMOTE_PATH}/${SCRIPT}"
 		fi
-		SCRIPT_COMMAND="bash ${SCRIPT_PATH}"
+		SCRIPT_COMMAND="bash \"${SCRIPT_PATH}\""
 		echo "Script command: " ${SCRIPT_COMMAND}
 
-		# Check if the file exists
-		REMOTE_FILE_CHECK=$(ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "if [ -f ${SCRIPT_PATH} ]; then echo 'found'; else echo 'not found'; fi")
-
+		# Test the remote file's existence
+		REMOTE_FILE_CHECK=$(ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "if [ -f \"${SCRIPT_PATH}\" ]; then echo 'found'; else echo 'not found'; fi")
 		if [ "${REMOTE_FILE_CHECK}" = "found" ]; then
 			echo "Remote script file found"
-			ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "chmod +x ${SCRIPT_PATH}"
+			ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "chmod +x \"${SCRIPT_PATH}\""
 			ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "bash -c '${SCRIPT_COMMAND}'"
 		else
 			echo "Remote script file not found"
