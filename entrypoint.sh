@@ -12,6 +12,7 @@ validate() {
 		: "${SERVER_ID:?SERVER_ID variable missing from environment variables.}"
 	fi
 	: "${SSH_PRIVATE_KEY:?SSH_PRIVATE_KEY variable missing from environment variables.}"
+	SSH_PORT="${SSH_PORT:-22}"
 	REMOTE_PATH="${REMOTE_PATH:-}"
 	SRC_PATH="${SRC_PATH:-.}"
 	FLAGS="${FLAGS:-"-azvrhi --inplace --exclude='.*'"}"
@@ -63,18 +64,18 @@ print_info() {
 		echo "* SSH_DEST: ${SSH_DEST}"
 	else
 		echo "* SERVER_ID: ${SERVER_ID}"
-	fi
-	echo "* SRC_PATH: ${SRC_PATH}"
-	echo "* FLAGS: ${FLAGS_ARRAY[@]}"
-	echo "* PHP_LINT: ${PHP_LINT}"
-	echo "* CACHE_CLEAR: ${CACHE_CLEAR}"
-	echo "* SCRIPT: ${SCRIPT}"
-	echo "=== Deploy Variables ==="
-	echo "* Destination: ${SERVER_DEST}"
-	# Optionally display SERVER_BASE_PATH if defined (non-custom)
-	if [ -n "${SERVER_BASE_PATH}" ]; then
 		echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
 	fi
+	echo "* SSH_PORT: ${SSH_PORT}"
+	echo "* SRC_PATH: ${SRC_PATH}"
+	echo "* PHP_LINT: ${PHP_LINT}"
+	echo ""
+	echo "=== Deploy Variables ==="
+	echo "* Destination: ${SERVER_DEST}"
+	echo "* Flags: ${FLAGS_ARRAY[@]}"
+	echo "* Cache: ${CACHE_CLEAR}"
+	echo "* Script: ${SCRIPT}"
+	echo ""
 	echo "-----------------------"
 }
 
@@ -123,7 +124,8 @@ check_lint() {
 
 # Sync files to the server using rsync and execute post-deploy script
 sync_files() {
-	SSH_SETTINGS="-v -p 22 -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
+	# Use the provided SSH_PORT instead of hard-coded 22
+	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
 
 	#create multiplex connection
 	ssh -nNf ${SSH_SETTINGS} -o ControlMaster=yes "${SSH_USER}"
@@ -175,7 +177,7 @@ check_cache() {
 		echo "Cache command: ${CACHE_COMMAND}"
 	else
 		CACHE_COMMAND=""
-	fi
+	}
 }
 
 # Main execution

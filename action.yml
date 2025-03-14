@@ -51,6 +51,10 @@ inputs:
     description: "The full destination directory. Only used when SERVER_TYPE is 'custom'."
     required: false
     default: ""
+  SSH_PORT:
+    description: "The SSH port. Only used when SERVER_TYPE is 'custom'. Defaults to 22."
+    required: false
+    default: "22"
 
 runs:
   using: "docker"
@@ -68,3 +72,4 @@ runs:
     SSH_USER: ${{ inputs.SSH_USER }}
     SSH_HOST: ${{ inputs.SSH_HOST }}
     SSH_DEST: ${{ inputs.SSH_DEST }}
+    SSH_PORT: ${{ inputs.SSH_PORT }}
