@@ -129,7 +129,7 @@ check_lint() {
 sync_files() {
 	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
 
-	#create multiplex connection
+	# Create multiplex connection
 	ssh -nNf ${SSH_SETTINGS} -o ControlMaster=yes "${SSH_REMOTE}"
 	echo "Multiplex SSH connection established."
 
@@ -143,8 +143,10 @@ sync_files() {
 	check_script
 	check_cache
 
-	# Execute post-deploy script
-	ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "${SCRIPT_COMMAND} ${CACHE_COMMAND}"
+	# Execute post-deploy script, if a script or cache clear command exists
+	if [ -n "${SCRIPT_COMMAND}${CACHE_COMMAND}" ]; then
+		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "bash -c '${SCRIPT_COMMAND} ${CACHE_COMMAND}'"
+	fi
 
 	# Close SSH multiplex connection
 	ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
@@ -156,7 +158,9 @@ check_script() {
 	if [ -n "${SCRIPT}" ]; then
 		if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
 			# Check if the SSH_DEST has a trailing slash
-			[[ "${SSH_DEST}" != */ ]] && SSH_DEST="${SSH_DEST}/"
+			if [ "${SSH_DEST}" != */ ]; then
+				SSH_DEST="${SSH_DEST}/"
+			fi
 
 			SCRIPT_PATH="${SSH_DEST}${SCRIPT}"
 		else
