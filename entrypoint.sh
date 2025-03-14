@@ -155,7 +155,7 @@ check_script() {
 	if [ -n "${SCRIPT}" ]; then
 		if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
 			# Check if the SSH_DEST has a trailing slash
-			if [[ "${SSH_DEST}" != */ ]]; then SSH_DEST="${SSH_DEST}/" fi
+			[[ "${SSH_DEST}" != */ ]] && SSH_DEST="${SSH_DEST}/"
 
 			SCRIPT_PATH="${SSH_DEST}${SCRIPT}"
 		else
