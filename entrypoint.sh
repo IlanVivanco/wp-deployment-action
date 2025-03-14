@@ -143,11 +143,6 @@ sync_files() {
 	check_script
 	check_cache
 
-	# Execute post-deploy script, if a script or cache clear command exists
-	if [ -n "${SCRIPT_COMMAND}${CACHE_COMMAND}" ]; then
-		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "bash -c '${SCRIPT_COMMAND} ${CACHE_COMMAND}'"
-	fi
-
 	# Close SSH multiplex connection if available
 	if ssh -O check -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}" 2>/dev/null; then
 		ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
@@ -172,11 +167,16 @@ check_script() {
 		SCRIPT_COMMAND="bash ${SCRIPT_PATH}"
 		echo "Script command: " ${SCRIPT_COMMAND}
 
-		# Set permissions
-		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "chmod +x ${SCRIPT_PATH}"
+		# Check if the file exists
+		REMOTE_FILE_CHECK=$(ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "if [ -f ${SCRIPT_PATH} ]; then echo 'found'; else echo 'not found'; fi")
 
-		# Does file exist?
-		ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "if [ -f ${SCRIPT_PATH}; then echo 'Script file found'; else echo 'Script file not found'; fi"
+		if [ "${REMOTE_FILE_CHECK}" = "found" ]; then
+			echo "Remote script file found"
+			ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "chmod +x ${SCRIPT_PATH}"
+			ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "bash -c '${SCRIPT_COMMAND}'"
+		else
+			echo "Remote script file not found"
+		fi
 	fi
 }
 
@@ -191,8 +191,10 @@ check_cache() {
 			CACHE_COMMAND=""
 		fi
 		echo "Cache command: ${CACHE_COMMAND}"
-	else
-		CACHE_COMMAND=""
+
+		if [ -n "${CACHE_COMMAND}" ]; then
+			ssh ${SSH_SETTINGS} "${SSH_REMOTE}" "bash -c '${CACHE_COMMAND}'"
+		fi
 	fi
 }
 
