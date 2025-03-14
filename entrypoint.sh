@@ -37,8 +37,10 @@ init() {
 		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 		;;
 	CUSTOM)
-		# For custom, use the provided SSH_USER, SSH_HOST and SSH_DEST
-		SERVER_DEST="${SSH_USER}@${SSH_HOST}:${SSH_DEST}"
+		# For custom, use the provided SSH_USER, SSH_HOST, SSH_DEST and SSH_PORT
+		SSH_PORT="${SSH_PORT:-22}"
+		SSH_USER="${SSH_USER}@${SSH_HOST}"
+		SERVER_DEST="${SSH_USER}:${SSH_DEST}"
 		;;
 	*)
 		echo "❌ Unknown SERVER_TYPE: ${SERVER_TYPE}"
@@ -124,7 +126,6 @@ check_lint() {
 
 # Sync files to the server using rsync and execute post-deploy script
 sync_files() {
-	# Use the provided SSH_PORT instead of hard-coded 22
 	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
 
 	#create multiplex connection
