@@ -177,7 +177,7 @@ check_cache() {
 		echo "Cache command: ${CACHE_COMMAND}"
 	else
 		CACHE_COMMAND=""
-	}
+	fi
 }
 
 # Main execution
