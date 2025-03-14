@@ -99,7 +99,7 @@ setup_ssh() {
 	fi
 	SSH_KEY_PATH="${SSH_PATH}/deploy_key"
 	umask 077
-	echo "${SSH_PRIVATE_KEY}" >"${SSH_KEY_PATH}"
+	printf '%b' "${SSH_PRIVATE_KEY}" >"${SSH_KEY_PATH}"
 	chmod 600 "${SSH_KEY_PATH}"
 	KNOWN_HOSTS_PATH="${SSH_PATH}/known_hosts"
 	ssh-keyscan -t rsa "${SSH_HOST}" >>"${KNOWN_HOSTS_PATH}"
