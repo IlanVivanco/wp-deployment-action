@@ -26,20 +26,21 @@ init() {
 	case "${SERVER_TYPE^^}" in
 	PRESSABLE)
 		SSH_HOST="ssh.pressable.com"
-		SERVER_BASE_PATH="~/htdocs"
 		SSH_USER="${SERVER_ID}@${SSH_HOST}"
+		SERVER_BASE_PATH="~/htdocs"
 		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 		;;
 	WPENGINE)
 		SSH_HOST="${SERVER_ID}.ssh.wpengine.net"
-		SERVER_BASE_PATH="sites/${SERVER_ID}"
 		SSH_USER="${SERVER_ID}@${SSH_HOST}"
+		SERVER_BASE_PATH="sites/${SERVER_ID}"
 		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 		;;
 	CUSTOM)
 		# For custom, use the provided SSH_USER, SSH_HOST, SSH_DEST and SSH_PORT
 		SSH_PORT="${SSH_PORT:-22}"
 		SSH_USER="${SSH_USER}@${SSH_HOST}"
+		SERVER_BASE_PATH="${SSH_DEST}"
 		SERVER_DEST="${SSH_USER}:${SSH_DEST}"
 		;;
 	*)
@@ -66,8 +67,8 @@ print_info() {
 		echo "* SSH_DEST: ${SSH_DEST}"
 	else
 		echo "* SERVER_ID: ${SERVER_ID}"
-		echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
 	fi
+	echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
 	echo "* SSH_PORT: ${SSH_PORT}"
 	echo "* SRC_PATH: ${SRC_PATH}"
 	echo "* PHP_LINT: ${PHP_LINT}"
