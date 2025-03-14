@@ -126,7 +126,7 @@ check_lint() {
 
 # Sync files to the server using rsync and execute post-deploy script
 sync_files() {
-	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
+	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath=${SSH_PATH}/ctl/%C -o ControlMaster=auto -o ControlPersist=600"
 
 	#create multiplex connection
 	ssh -nNf ${SSH_SETTINGS} -o ControlMaster=yes "${SSH_USER}"
