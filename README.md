@@ -13,46 +13,9 @@ You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax 
 
 1. **Create a workflow file:** In the root directory of your repository, navigate to `.github/workflows/` and create a new YML file. You can name it anything you like, such as `deploy-to-prod.yml`.
 
-1. **Add the workflow configuration:** Copy and paste the following code into your new YML file. Be sure to replace the placeholders with the appropriate values for your deployment environment. You can also specify which branches will trigger this action by editing the **branches** section of the YML file:
+1. **Add the workflow configuration:** Copy and paste the following code into your new YML file. Be sure to replace the placeholders with the appropriate values for your deployment environment. You can also specify which branches will trigger this action by editing the **branches** section of the YML file. Check the [examples section](#implementation-examples) for more details.
 
-   **`> .github/workflows/deploy-to-prod.yml`**
-
-   ```yml
-   name: 📦 Production Deployment
-   on:
-      push:
-         branches:
-            - main
-            - dev
-            - 'feature/**'
-      workflow_dispatch:
-   env:
-      SERVER_TYPE: pressable # pressable or wpengine
-      SERVER_ID: pressable-username # Pressable SFTP username or WP Engine environment name
-      PROJECT_TYPE: theme # plugin or theme
-      PROJECT_NAME: theme-name # Name of the plugin or theme
-   jobs:
-      build:
-         name: 🚩 Deployment Job
-         runs-on: ubuntu-latest
-         steps:
-         - name: 🚚 Getting latest code
-           uses: actions/checkout@v4
-
-         - name: 🔁 Starting Deployment
-           uses: IlanVivanco/wp-deployment-action@v1
-           with:
-               SSH_PRIVATE_KEY: ${{ secrets.MY_SSH_KEY }}
-               SERVER_ID: ${{ env.SERVER_ID }}
-               SERVER_TYPE: ${{ env.SERVER_TYPE }}
-               REMOTE_PATH: 'wp-content/${{ env.PROJECT_TYPE }}s/${{ env.PROJECT_NAME }}'
-               FLAGS: -azvrhi --inplace --delete --delete-excluded --exclude-from=.deployignore
-               SCRIPT: 'bin/post-deploy.sh'
-               PHP_LINT: TRUE
-               CACHE_CLEAR: TRUE
-   ```
-
-4. **Push changes to trigger the action:** After editing and saving the file, push the latest changes to your repository. The GitHub Action will automatically execute and handle the deployment process.
+1. **Push changes to trigger the action:** After editing and saving the file, push the latest changes to your repository. The GitHub Action will automatically execute and handle the deployment process.
 
    ![Magic](https://media.giphy.com/media/l3V0dy1zzyjbYTQQM/giphy.gif)
 
@@ -63,9 +26,9 @@ You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax 
 
 1. **Add the public SSH key:** Copy the contents of the public key (the file ending in .pub) and add it to your [Pressable](https://pressable.com/knowledgebase/connect-to-ssh-on-pressable/#connect-to-ssh-with-an-ssh-key/) or [WP Engine](https://wpengine.com/support/ssh-gateway/#Add_SSH_Key) configuration panel under the SSH keys section.
 
-2. **Store the private key in GitHub:** In your GitHub repository, navigate to **`Settings > Secrets and variables > Actions`**, and create a new encrypted secret. You can name the secret whatever you like, but make sure you pass the same name when using it in the workflow.
+1. **Store the private key in GitHub:** In your GitHub repository, navigate to **`Settings > Secrets and variables > Actions`**, and create a new encrypted secret. You can name the secret whatever you like, but make sure you pass the same name when using it in the workflow.
 
-3. **Reference the private key in your workflow YML file:** In your GitHub Action workflow file, configure the SSH private key by referencing the secret you created. If you named the secret `PRESSABLE_SSH_KEY`, your code should look like this: `SSH_PRIVATE_KEY: ${{ secrets.PRESSABLE_SSH_KEY }}`
+1. **Reference the private key in your workflow YML file:** In your GitHub Action workflow file, configure the SSH private key by referencing the secret you created. If you named the secret `PRESSABLE_SSH_KEY`, your code should look like this: `SSH_PRIVATE_KEY: ${{ secrets.PRESSABLE_SSH_KEY }}`
 
 
 ## Environment variables
@@ -74,11 +37,14 @@ This action requires or supports the following variables:
 
 ### Required
 
-| Name              | Type      | Usage                                                                                                              |
-| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `SSH_PRIVATE_KEY` | _secrets_ | The private SSH key. This must be stored in GitHub Secrets and authorized on Pressable or WP Engine.               |
-| `SERVER_TYPE`     | _string_  | The type of server to deploy to. Currently, only Pressable (`pressable`) and WP Engine (`wpengine`) are supported. |
-| `SERVER_ID`       | _string_  | The SSH username for Pressable deployments or the install name for WP Engine deployments.                          |
+| Name              | Type      | Usage                                                                                                                         |
+| ----------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `SSH_PRIVATE_KEY` | _secrets_ | The private SSH key. This must be stored in GitHub Secrets and authorized on your server.                                     |
+| `SERVER_TYPE`     | _string_  | The type of server to deploy to. Use 'pressable' or 'wpengine' for quick plug-and-play or 'custom' for other SSH connections. |
+| `SERVER_ID`       | _string_  | The SSH username for Pressable deployments or the install name for WP Engine deployments. Not used in custom mode.            |
+| `SSH_USER`        | _string_  | The SSH username. Only used when SERVER_TYPE is 'custom'.                                                                     |
+| `SSH_HOST`        | _string_  | The SSH hostname. Only used when SERVER_TYPE is 'custom'.                                                                     |
+| `SSH_DEST`        | _string_  | The full destination directory. Only used when SERVER_TYPE is 'custom'.                                                       |
 
 ### Optional
 
@@ -133,6 +99,44 @@ You can read the full details [here](https://linux.die.net/man/1/rsync), but the
 | `--exclude`           | Excludes specific files or directories from the sync, e.g., `--exclude='*.log'`.                     |
 | `--exclude-from`      | Specifies a file (like `.deployignore`) containing a list of patterns to exclude.                    |
 | `-h` *human-readable* | Displays file sizes and transfer statistics in human-readable formats (e.g., KB, MB, GB).            |
+
+## Implementation Examples
+
+### Deploying Theme to Pressable
+Create a workflow file (for example `.github/workflows/prod-to-pressable.yml`) with:
+
+   ```yml
+   name: 📦 Production Deployment
+   on:
+      push:
+         branches:
+            - main
+      workflow_dispatch:
+   env:
+      SERVER_TYPE: pressable # pressable or wpengine
+      SERVER_ID: pressable-username # Pressable SFTP username or WP Engine environment name
+      PROJECT_TYPE: theme # plugin or theme
+      PROJECT_NAME: theme-name # Name of the plugin or theme
+   jobs:
+      build:
+         name: 🚩 Deployment Job
+         runs-on: ubuntu-latest
+         steps:
+         - name: 🚚 Getting latest code
+           uses: actions/checkout@v4
+
+         - name: 🔁 Starting Deployment
+           uses: IlanVivanco/wp-deployment-action@v1
+           with:
+               SSH_PRIVATE_KEY: ${{ secrets.MY_SSH_KEY }}
+               SERVER_ID: ${{ env.SERVER_ID }}
+               SERVER_TYPE: ${{ env.SERVER_TYPE }}
+               REMOTE_PATH: 'wp-content/${{ env.PROJECT_TYPE }}s/${{ env.PROJECT_NAME }}'
+               FLAGS: -azvrhi --inplace --delete --delete-excluded --exclude-from=.deployignore
+               SCRIPT: 'bin/post-deploy.sh'
+               PHP_LINT: TRUE
+               CACHE_CLEAR: TRUE
+   ```
 
 ## Contributing
 
