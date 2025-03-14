@@ -5,7 +5,7 @@ set -e
 validate() {
 	: "${SERVER_TYPE:?SERVER_TYPE variable missing from environment variables.}"
 	if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
-		: "${SSH_REMOTE:?SSH_REMOTE variable missing for custom server.}"
+		: "${SSH_USER:?SSH_USER variable missing for custom server.}"
 		: "${SSH_DEST:?SSH_DEST variable missing for custom server.}"
 		: "${SSH_HOST:?SSH_HOST variable missing for custom server.}"
 	else
