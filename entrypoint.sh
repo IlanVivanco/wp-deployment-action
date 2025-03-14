@@ -1,5 +1,6 @@
 #!/bin/bash -l
 set -e
+set -o pipefail
 
 # Validate the required environment variables
 validate() {
@@ -125,9 +126,17 @@ check_lint() {
 
 # Sync files to the server using rsync and execute post-deploy script
 sync_files() {
-	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
+	cleanup_connection() {
+		# Close multiplex connection
+		if ssh -O check -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}" 2>/dev/null; then
+			ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
+		fi
+	}
+	# Catch errors and interrupts to ensure cleanup
+	trap cleanup_connection ERR SIGINT SIGTERM
 
 	# Create multiplex connection
+	SSH_SETTINGS="-v -p ${SSH_PORT} -i ${SSH_KEY_PATH} -o StrictHostKeyChecking=no -o ControlPath='${SSH_PATH}/ctl/%C'"
 	ssh -nNf ${SSH_SETTINGS} -o ControlMaster=yes "${SSH_REMOTE}"
 	echo "Multiplex SSH connection established."
 
@@ -140,11 +149,7 @@ sync_files() {
 
 	check_script
 	check_cache
-
-	# Close SSH multiplex connection if available
-	if ssh -O check -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}" 2>/dev/null; then
-		ssh -O exit -o ControlPath="${SSH_PATH}/ctl/%C" "${SSH_REMOTE}"
-	fi
+	cleanup_connection
 
 	echo "✅ Site has been deployed!"
 }
