@@ -3,15 +3,21 @@ set -e
 
 # Validate the required environment variables
 validate() {
-	: ${SERVER_TYPE:?"SERVER_TYPE variable missing from environment variables."}
-	: ${SSH_PRIVATE_KEY:?"SSH_PRIVATE_KEY variable missing from environment variables."}
-	: ${SERVER_ID:?"SERVER_ID variable missing from environment variables."}
-	REMOTE_PATH="${REMOTE_PATH:-""}"
-	SRC_PATH="${SRC_PATH:-"."}"
+	: "${SERVER_TYPE:?SERVER_TYPE variable missing from environment variables.}"
+	if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
+		: "${SSH_USER:?SSH_USER variable missing for custom server.}"
+		: "${SSH_DEST:?SSH_DEST variable missing for custom server.}"
+		: "${SSH_HOST:?SSH_HOST variable missing for custom server.}"
+	else
+		: "${SERVER_ID:?SERVER_ID variable missing from environment variables.}"
+	fi
+	: "${SSH_PRIVATE_KEY:?SSH_PRIVATE_KEY variable missing from environment variables.}"
+	REMOTE_PATH="${REMOTE_PATH:-}"
+	SRC_PATH="${SRC_PATH:-.}"
 	FLAGS="${FLAGS:-"-azvrhi --inplace --exclude='.*'"}"
-	PHP_LINT="${PHP_LINT:-"false"}"
-	CACHE_CLEAR="${CACHE_CLEAR:-"false"}"
-	SCRIPT="${SCRIPT:-""}"
+	PHP_LINT="${PHP_LINT:-false}"
+	CACHE_CLEAR="${CACHE_CLEAR:-false}"
+	SCRIPT="${SCRIPT:-}"
 }
 
 # Set up environment variables
@@ -20,18 +26,24 @@ init() {
 	PRESSABLE)
 		SSH_HOST="ssh.pressable.com"
 		SERVER_BASE_PATH="~/htdocs"
+		SSH_USER="${SERVER_ID}@${SSH_HOST}"
+		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 		;;
 	WPENGINE)
 		SSH_HOST="${SERVER_ID}.ssh.wpengine.net"
 		SERVER_BASE_PATH="sites/${SERVER_ID}"
+		SSH_USER="${SERVER_ID}@${SSH_HOST}"
+		SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
+		;;
+	CUSTOM)
+		# For custom, use the provided SSH_USER, SSH_HOST and SSH_DEST
+		SERVER_DEST="${SSH_USER}@${SSH_HOST}:${SSH_DEST}"
 		;;
 	*)
 		echo "❌ Unknown SERVER_TYPE: ${SERVER_TYPE}"
 		exit 1
 		;;
 	esac
-	SSH_USER="${SERVER_ID}@${SSH_HOST}"
-	SERVER_DEST="${SSH_USER}:${SERVER_BASE_PATH}/${REMOTE_PATH}"
 
 	parse_flags "$FLAGS"
 
@@ -43,14 +55,26 @@ init() {
 # Print deployment info
 print_info() {
 	echo "--- DEPLOYMENT INFO ---"
-	echo "* Deploying to: ${SERVER_TYPE}"
-	echo "* Server ID: ${SERVER_ID}"
-	echo "* Source path: ${SRC_PATH}"
-	echo "* Destination path: ${SERVER_DEST}"
-	echo "* Flags: ${FLAGS_ARRAY[@]}"
-	echo "* PHP linting: ${PHP_LINT}"
-	echo "* Cache clear: ${CACHE_CLEAR}"
-	echo "* Post-deploy script: ${SCRIPT}"
+	echo "=== Received Variables ==="
+	echo "* SERVER_TYPE: ${SERVER_TYPE}"
+	if [ "${SERVER_TYPE^^}" = "CUSTOM" ]; then
+		echo "* SSH_USER: ${SSH_USER}"
+		echo "* SSH_HOST: ${SSH_HOST}"
+		echo "* SSH_DEST: ${SSH_DEST}"
+	else
+		echo "* SERVER_ID: ${SERVER_ID}"
+	fi
+	echo "* SRC_PATH: ${SRC_PATH}"
+	echo "* FLAGS: ${FLAGS_ARRAY[@]}"
+	echo "* PHP_LINT: ${PHP_LINT}"
+	echo "* CACHE_CLEAR: ${CACHE_CLEAR}"
+	echo "* SCRIPT: ${SCRIPT}"
+	echo "=== Deploy Variables ==="
+	echo "* Destination: ${SERVER_DEST}"
+	# Optionally display SERVER_BASE_PATH if defined (non-custom)
+	if [ -n "${SERVER_BASE_PATH}" ]; then
+		echo "* SERVER_BASE_PATH: ${SERVER_BASE_PATH}"
+	fi
 	echo "-----------------------"
 }
 
@@ -81,7 +105,7 @@ setup_ssh() {
 
 # Check PHP linting
 check_lint() {
-	if [ "${PHP_LINT^^}" == "TRUE" ]; then
+	if [ "${PHP_LINT^^}" = "TRUE" ]; then
 		echo "Starting PHP linting..."
 		find "${SRC_PATH}" -name "*.php" -type f -print0 | while IFS= read -r -d '' file; do
 			php -l "$file"
@@ -140,16 +164,15 @@ check_script() {
 
 # Check cache clearing command
 check_cache() {
-	if [ "${CACHE_CLEAR^^}" == "TRUE" ]; then
-		if [ "${SERVER_TYPE^^}" == "PRESSABLE" ]; then
+	if [ "${CACHE_CLEAR^^}" = "TRUE" ]; then
+		if [ "${SERVER_TYPE^^}" = "PRESSABLE" ]; then
 			CACHE_COMMAND="&& wp --skip-plugins --skip-themes cache flush"
-		elif [ "${SERVER_TYPE^^}" == "WPENGINE" ]; then
+		elif [ "${SERVER_TYPE^^}" = "WPENGINE" ]; then
 			CACHE_COMMAND="&& wp --skip-plugins --skip-themes page-cache flush && wp --skip-plugins --skip-themes cdn-cache flush"
 		else
 			CACHE_COMMAND=""
 		fi
-
-		echo "Cache command: " ${CACHE_COMMAND}
+		echo "Cache command: ${CACHE_COMMAND}"
 	else
 		CACHE_COMMAND=""
 	fi
