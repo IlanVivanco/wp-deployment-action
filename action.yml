@@ -6,14 +6,15 @@ branding:
 
 inputs:
   SERVER_TYPE:
-    description: "The type of server to deploy to. So far, only Pressable ('preesable') and WP Engine ('wpengine') are supported"
+    description: "The type of server to deploy to. Use 'pressable' or 'wpengine' for quick plug-and-play or 'custom' for custom SSH connections."
     required: true
   SSH_PRIVATE_KEY:
-    description: "The private SSH key. You must save this in the GitHub Secrets and authorize it on Pressable or WP Engine."
+    description: "The private SSH key. You must save this in GitHub Secrets and authorize it on your server."
     required: true
   SERVER_ID:
-    description: "The SSH username for Pressable deployments or the install name for WP Engine deployments."
-    required: true
+    description: "The SSH username for Pressable deployments or the install name for WP Engine deployments. Not used in custom mode."
+    required: false
+    default: ""
   REMOTE_PATH:
     description: "The remote path on the server where files should be deployed. Defaults to the site root directory."
     default: ""
@@ -38,6 +39,18 @@ inputs:
     description: "Custom script to run on the remote server after deployment."
     default: ""
     required: false
+  SSH_USER:
+    description: "The SSH username. Only used when SERVER_TYPE is 'custom'."
+    required: false
+    default: ""
+  SSH_HOST:
+    description: "The SSH hostname. Only used when SERVER_TYPE is 'custom'."
+    required: false
+    default: ""
+  SSH_DEST:
+    description: "The full destination directory. Only used when SERVER_TYPE is 'custom'."
+    required: false
+    default: ""
 
 runs:
   using: "docker"
@@ -52,3 +65,6 @@ runs:
     PHP_LINT: ${{ inputs.PHP_LINT }}
     CACHE_CLEAR: ${{ inputs.CACHE_CLEAR }}
     SCRIPT: ${{ inputs.SCRIPT }}
+    SSH_USER: ${{ inputs.SSH_USER }}
+    SSH_HOST: ${{ inputs.SSH_HOST }}
+    SSH_DEST: ${{ inputs.SSH_DEST }}
