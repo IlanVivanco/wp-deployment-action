@@ -14,7 +14,7 @@ inputs:
     default: ""
     required: false
   SERVER_ID:
-    description: "Deprecated: the v1 name of SSH_USER. It still works; use SSH_USER instead."
+    description: "Removed in v2: renamed to SSH_USER. Setting it fails with that message."
     default: ""
     required: false
   SSH_PRIVATE_KEY:
@@ -47,7 +47,7 @@ inputs:
     default: ""
     required: false
   FLAGS:
-    description: "rsync flags. Setting them replaces the default. Add --delete to remove server files that are not in SRC_PATH."
+    description: "rsync flags. Setting them replaces the default. Add --delete to remove server files that are not in SRC_PATH. Whatever the flags, .git, .github and .env files are never uploaded, and wp-config.php, uploads, cache and mu-plugins are never deleted."
     default: "-azvrhi --inplace --exclude='.*'"
     required: false
   DRY_RUN:
@@ -55,14 +55,14 @@ inputs:
     default: "FALSE"
     required: false
 
-  # Checks and after the deploy
+  # After the deploy
   PHP_LINT:
-    description: "Set to 'TRUE' to check the syntax of every PHP file in SRC_PATH before uploading. Defaults to 'FALSE'."
-    default: "FALSE"
+    description: "Removed in v2: lint in a step before the deploy (see the README). Setting it to 'TRUE' fails with that message."
+    default: ""
     required: false
   PHP_VERSION:
-    description: "PHP version used by PHP_LINT: '8.3', '8.4' or '8.5'. Defaults to '8.4'."
-    default: "8.4"
+    description: "Removed in v2 with PHP_LINT. Ignored, with a warning."
+    default: ""
     required: false
   SCRIPT:
     description: "Script inside SRC_PATH to run on the server with bash after the upload, e.g. 'bin/post-deploy.sh'."

@@ -19,21 +19,15 @@ is_true() {
 validate() {
 	[ -n "${SERVER_TYPE}" ] || fail "SERVER_TYPE variable missing from environment variables."
 	[ -n "${SSH_PRIVATE_KEY}" ] || fail "SSH_PRIVATE_KEY variable missing from environment variables."
-	# SERVER_ID is the v1 name of SSH_USER and still works
-	if [ -n "${SERVER_ID}" ]; then
-		if [ -z "${SSH_USER}" ]; then
-			SSH_USER="${SERVER_ID}"
-			echo "::notice::SERVER_ID is deprecated and still works. Rename it to SSH_USER."
-		elif [ "${SSH_USER}" != "${SERVER_ID}" ]; then
-			fail "SSH_USER ('${SSH_USER}') and SERVER_ID ('${SERVER_ID}') are both set and differ. Use only SSH_USER."
-		fi
+	# Inputs removed in v2 fail with the way to migrate, instead of being ignored
+	[ -z "${SERVER_ID}" ] || fail "SERVER_ID was renamed to SSH_USER in v2. Replace 'SERVER_ID:' with 'SSH_USER:' in your workflow."
+	if is_true "${PHP_LINT}"; then
+		fail "PHP_LINT was removed in v2. Lint in a step before the deploy; the README has the snippet (Upgrading from v1)."
 	fi
 	[ -n "${SSH_USER}" ] || fail "SSH_USER is missing. Pressable and custom: the SSH username. WP Engine: the environment name."
 	REMOTE_PATH="${REMOTE_PATH:-""}"
 	SRC_PATH="${SRC_PATH:-"."}"
 	FLAGS="${FLAGS:-"-azvrhi --inplace --exclude='.*'"}"
-	PHP_LINT="${PHP_LINT:-"false"}"
-	PHP_VERSION="${PHP_VERSION:-"8.4"}"
 	CACHE_CLEAR="${CACHE_CLEAR:-"false"}"
 	SCRIPT="${SCRIPT:-""}"
 	SSH_PORT="${SSH_PORT:-"22"}"
@@ -43,12 +37,7 @@ validate() {
 	[[ "${SSH_PRIVATE_KEY}" == *"PRIVATE KEY-----"* ]] || fail "SSH_PRIVATE_KEY doesn't look like a private key. Paste the whole private key file, including the -----BEGIN and -----END lines, not the .pub file."
 	[[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || fail "SSH_PORT must be a number, got '${SSH_PORT}'."
 	[ -d "${SRC_PATH}" ] || fail "SRC_PATH '${SRC_PATH}' is not a directory."
-	if is_true "${PHP_LINT}"; then
-		case "${PHP_VERSION}" in
-		8.3 | 8.4 | 8.5) ;;
-		*) fail "PHP_VERSION '${PHP_VERSION}' is not supported for linting. Use 8.3, 8.4 or 8.5, or lint in a previous step with shivammathur/setup-php." ;;
-		esac
-	fi
+	[ -z "${PHP_VERSION}" ] || echo "::warning::PHP_VERSION was removed in v2 with PHP_LINT and is ignored."
 }
 
 # Set up environment variables
@@ -95,6 +84,7 @@ init() {
 	SERVER_DEST="${SSH_REMOTE}:${SERVER_PATH}"
 
 	parse_flags "$FLAGS"
+	safety_rules
 	if [ -z "${REMOTE_PATH}" ] && [[ " ${FLAGS_ARRAY[*]} " == *" --delete"* ]]; then
 		echo "::warning::FLAGS has --delete and REMOTE_PATH is empty, so files on the server's WordPress root that are not in SRC_PATH will be deleted. Try DRY_RUN first."
 	fi
@@ -110,7 +100,8 @@ print_info() {
 	echo "* Source path: ${SRC_PATH}"
 	echo "* Destination path: ${SERVER_DEST}"
 	echo "* Flags: ${FLAGS_ARRAY[*]}"
-	echo "* PHP linting: ${PHP_LINT}$(is_true "${PHP_LINT}" && echo " (PHP ${PHP_VERSION})")"
+	echo "* Never uploaded: ${NEVER_UPLOAD[*]}"
+	echo "* Never deleted on the server: ${PROTECTED_HERE[*]:-(nothing under this REMOTE_PATH)}"
 	echo "* Cache clear: ${CACHE_CLEAR}${CACHE_COMMAND:+ (${CACHE_COMMAND})}"
 	echo "* Post-deploy script: ${SCRIPT}"
 	echo "* Host key check: $([ -n "${SSH_KNOWN_HOSTS}" ] && echo "strict (SSH_KNOWN_HOSTS)" || echo "trust on first use")"
@@ -120,40 +111,44 @@ print_info() {
 	echo "-----------------------"
 }
 
+# Files that are never uploaded, whatever FLAGS and .deployignore say
+NEVER_UPLOAD=(.git/ .github/ .gitignore .gitattributes .deployignore .env ".env.*" .DS_Store)
+# Server files that are never deleted, relative to the WordPress root
+PROTECTED=(
+	wp-config.php .htaccess .user.ini
+	wp-content/uploads/ wp-content/cache/ wp-content/upgrade/ wp-content/mu-plugins/
+	wp-content/advanced-cache.php wp-content/object-cache.php wp-content/db.php
+)
+
+# Build the rsync rules for NEVER_UPLOAD and for the PROTECTED paths inside
+# REMOTE_PATH. They go before FLAGS, and rsync applies the first rule that matches.
+safety_rules() {
+	local remote="${REMOTE_PATH#/}" rule path
+	remote="${remote%/}"
+	SAFETY_RULES=()
+	PROTECTED_HERE=()
+	for rule in "${NEVER_UPLOAD[@]}"; do SAFETY_RULES+=("--filter=- ${rule}"); done
+	for path in "${PROTECTED[@]}"; do
+		if [ -z "${remote}" ]; then
+			rule="/${path}"
+		elif [[ "${path}" == "${remote}/"?* ]]; then
+			rule="/${path#"${remote}"/}"
+		else
+			# Outside REMOTE_PATH, or REMOTE_PATH itself (deploying into it is on purpose)
+			continue
+		fi
+		# A protected folder keeps everything inside it too
+		[[ "${rule}" != */ ]] || rule="${rule}***"
+		SAFETY_RULES+=("--filter=P ${rule}")
+		PROTECTED_HERE+=("${path}")
+	done
+}
+
 # Parse flags into an array
 parse_flags() {
 	local flags="$1"
 	FLAGS_ARRAY=()
 	while IFS= read -r -d '' flag; do FLAGS_ARRAY+=("$flag"); done < <(echo "$flags" | xargs printf '%s\0')
-}
-
-# Check PHP linting
-check_lint() {
-	if ! is_true "${PHP_LINT}"; then
-		echo "Skipping PHP linting."
-		return
-	fi
-
-	# PHP 8.4 ships in the image; other versions are installed on demand
-	local php_bin="php${PHP_VERSION//./}"
-	if ! command -v "${php_bin}" >/dev/null; then
-		echo "Installing PHP ${PHP_VERSION}..."
-		apk add --no-cache --quiet "${php_bin}" || fail "Could not install PHP ${PHP_VERSION}."
-	fi
-
-	echo "Starting PHP linting with $("${php_bin}" -r 'echo PHP_VERSION;')..."
-	local failed=0 count=0 file output
-	while IFS= read -r -d '' file; do
-		count=$((count + 1))
-		if ! output=$("${php_bin}" -l "$file" 2>&1); then
-			echo "$output"
-			echo "::error file=${file}::PHP linting failed"
-			failed=1
-		fi
-	done < <(find "${SRC_PATH}" -name "*.php" -type f -print0)
-
-	[ "$failed" -eq 0 ] || fail "PHP linting failed."
-	echo "PHP linting completed successfully (${count} files)."
 }
 
 # Set up SSH keys, host keys and connection options in a private temp dir
@@ -222,7 +217,7 @@ sync_files() {
 	local rsync_log rsync_args
 	rsync_log="$(mktemp)"
 	# shellcheck disable=SC2054 # --chmod takes a comma-separated value
-	rsync_args=("${FLAGS_ARRAY[@]}" --chmod=D775,F664 --stats)
+	rsync_args=("${SAFETY_RULES[@]}" "${FLAGS_ARRAY[@]}" --chmod=D775,F664 --stats)
 	if is_true "${DRY_RUN}"; then
 		rsync_args+=(--dry-run)
 	fi
@@ -288,7 +283,6 @@ run_remote() {
 # Main execution
 validate
 init
-check_lint
 setup_ssh
 sync_files
 run_remote

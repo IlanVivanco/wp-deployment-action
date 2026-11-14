@@ -4,21 +4,22 @@ Deploy a theme, plugin or whole site from GitHub to a [WordPress](https://wordpr
 
 On every run the action:
 
-1. Checks your PHP files for syntax errors, if `PHP_LINT` is on. A broken file stops the deploy before anything is uploaded.
-2. Connects to the server with your SSH key.
-3. Uploads the changed files with rsync.
-4. Runs your post-deploy `SCRIPT`, if you set one.
-5. Clears the cache, if `CACHE_CLEAR` is on.
+1. Connects to the server with your SSH key.
+2. Uploads the changed files with rsync. It never uploads `.git`, `.github` or `.env` files, and never deletes `wp-config.php`, uploads or the host's files on the server. See [Built-in safety rules](#built-in-safety-rules).
+3. Runs your post-deploy `SCRIPT`, if you set one.
+4. Clears the cache, if `CACHE_CLEAR` is on.
 
 Contents:
 
 - [Quick start](#quick-start)
 - [Recipes](#recipes)
 - [Before you go live](#before-you-go-live)
+- [Built-in safety rules](#built-in-safety-rules)
 - [Inputs](#inputs)
 - [Outputs](#outputs)
 - [Host keys](#host-keys)
 - [Troubleshooting](#troubleshooting)
+- [Upgrading from v1](#upgrading-from-v1)
 
 ## Quick start
 
@@ -69,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: IlanVivanco/wp-deployment-action@v1
+      - uses: IlanVivanco/wp-deployment-action@v2
         with:
           SERVER_TYPE: pressable
           SSH_USER: my-site-username
@@ -96,7 +97,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: IlanVivanco/wp-deployment-action@v1
+      - uses: IlanVivanco/wp-deployment-action@v2
         with:
           SERVER_TYPE: wpengine
           SSH_USER: my-env
@@ -129,7 +130,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: IlanVivanco/wp-deployment-action@v1
+      - uses: IlanVivanco/wp-deployment-action@v2
         with:
           SERVER_TYPE: custom
           SSH_HOST: example.com
@@ -147,7 +148,7 @@ If your host uses a port other than 22, add `SSH_PORT`.
 
 Push to `main`, or run the workflow by hand from the **Actions** tab. With `DRY_RUN: TRUE` the log lists the files that would be uploaded, and nothing changes on the server. When the list looks right, remove the `DRY_RUN` line and push again.
 
-`@v1` always gets the latest 1.x release, with fixes and no breaking changes. To stay on an exact release, use the full version, e.g. `@v1.2.0`.
+`@v2` always gets the latest 2.x release, with fixes and no breaking changes. To stay on an exact release, use the full version, e.g. `@v2.0.0`. Coming from v1? See [Upgrading from v1](#upgrading-from-v1).
 
 ## Recipes
 
@@ -170,7 +171,7 @@ Add one step per folder. Each step is a separate upload, so each can have its ow
 
 ```yml
       - name: Deploy theme
-        uses: IlanVivanco/wp-deployment-action@v1
+        uses: IlanVivanco/wp-deployment-action@v2
         with:
           SERVER_TYPE: custom
           SSH_HOST: example.com
@@ -182,7 +183,7 @@ Add one step per folder. Each step is a separate upload, so each can have its ow
           FLAGS: -azvrhi --inplace --delete --exclude='.*'
 
       - name: Deploy mu-plugins
-        uses: IlanVivanco/wp-deployment-action@v1
+        uses: IlanVivanco/wp-deployment-action@v2
         with:
           SERVER_TYPE: custom
           SSH_HOST: example.com
@@ -252,16 +253,17 @@ Set `SCRIPT` to the path of a script **inside `SRC_PATH`**, such as `bin/post-de
 
 ### Check PHP syntax before uploading
 
-Set `PHP_LINT: TRUE`. Every `.php` file in `SRC_PATH` is checked with `php -l`, and if one fails the deploy stops before anything is uploaded. Set `PHP_VERSION` to the version your server runs: `8.3`, `8.4` (the default) or `8.5`.
-
-For older PHP versions, check in a previous step and leave `PHP_LINT` off:
+Add a step before the deploy, with the PHP version your server runs. If a file has a syntax error, the step fails and the deploy doesn't run.
 
 ```yml
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
-      - run: find theme -name '*.php' -print0 | xargs -0 -n1 php -l
+          php-version: '8.3' # The PHP version of your server
+      - name: Check PHP syntax
+        run: find theme -name '*.php' -not -path '*/vendor/*' -not -path '*/node_modules/*' -print0 | xargs -0 -n1 -P4 php -l
 ```
+
+Replace `theme` with your `SRC_PATH`, or `.` for the whole repository.
 
 ### Use the results in later steps
 
@@ -269,7 +271,7 @@ Give the step an `id` and read its [outputs](#outputs):
 
 ```yml
       - id: deploy
-        uses: IlanVivanco/wp-deployment-action@v1
+        uses: IlanVivanco/wp-deployment-action@v2
         with:
           # ...
       - run: echo "Uploaded ${{ steps.deploy.outputs.files_transferred }} files"
@@ -278,11 +280,28 @@ Give the step an `id` and read its [outputs](#outputs):
 ## Before you go live
 
 - **Always try a dry run first.** `DRY_RUN: TRUE` shows exactly what would be uploaded and deleted, without touching the server.
-- **Be careful with `--delete`.** It removes everything in the destination folder that is not in `SRC_PATH`. If `REMOTE_PATH` is empty, the destination is the WordPress root, so a theme repository deployed with `--delete` would wipe WordPress core, `wp-config.php` and your uploads. Only use `--delete` when `REMOTE_PATH` points to a folder your repository fully owns, like your theme. The action shows a warning when it sees `--delete` with an empty `REMOTE_PATH`.
+- **Be careful with `--delete`.** It removes everything in the destination folder that is not in `SRC_PATH`. If `REMOTE_PATH` is empty, the destination is the WordPress root, so a theme repository deployed with `--delete` would wipe WordPress core and every plugin. The [safety rules](#built-in-safety-rules) keep `wp-config.php` and uploads, but not the rest. Only use `--delete` when `REMOTE_PATH` points to a folder your repository fully owns, like your theme. The action shows a warning when it sees `--delete` with an empty `REMOTE_PATH`.
 - **`FLAGS` replaces the default flags, it doesn't add to them.** Start from the default, `-azvrhi --inplace --exclude='.*'`, and add what you need.
 - **Deploy to production only from the branch you release from**, like `main`. Don't deploy to production from `feature/**` branches.
 - **Only put values you control in `FLAGS`, `SCRIPT` and `CACHE_COMMAND`.** They run as written on the server, so never build them from branch names, pull request titles or other text someone else can change.
 - **Pin the server's host key** with `SSH_KNOWN_HOSTS`. See [Host keys](#host-keys).
+
+## Built-in safety rules
+
+These apply on every deploy and can't be turned off with `FLAGS` or `.deployignore`.
+
+**Never uploaded:** `.git/`, `.github/`, `.gitignore`, `.gitattributes`, `.deployignore`, `.env`, `.env.*` and `.DS_Store`, in any folder. They hold your repository history, CI settings and secrets, and a public site would serve them.
+
+**Never deleted on the server**, even with `--delete` or `--delete-excluded`. Paths are from the WordPress root:
+
+- `wp-config.php`, `.htaccess`, `.user.ini`
+- `wp-content/uploads/`, `wp-content/cache/`, `wp-content/upgrade/`
+- `wp-content/mu-plugins/`, where Pressable and WP Engine keep their own plugins
+- `wp-content/advanced-cache.php`, `wp-content/object-cache.php`, `wp-content/db.php`, which caching plugins and hosts create
+
+Only the paths inside `REMOTE_PATH` apply. A deploy to `wp-content/themes/my-theme` doesn't touch any of them anyway, while a deploy to the WordPress root or to `wp-content` keeps them all. When `REMOTE_PATH` is one of these folders, like `wp-content/mu-plugins`, you are deploying into it on purpose, so it isn't protected: don't use `--delete` there.
+
+The deploy log lists both, under "Never uploaded" and "Never deleted on the server".
 
 ## Inputs
 
@@ -309,20 +328,18 @@ Give the step an `id` and read its [outputs](#outputs):
 | `FLAGS`       | No       | rsync flags. Default `-azvrhi --inplace --exclude='.*'`. Setting it replaces the default. See [rsync flags](#rsync-flags).            |
 | `DRY_RUN`     | No       | `TRUE` to only show what would change. rsync runs with `--dry-run`, and `SCRIPT` and the cache clear are skipped. Default `FALSE`.   |
 
-### Checks and after the deploy
+### After the deploy
 
 | Name            | Required                        | Description                                                                                                                  |
 | --------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `PHP_LINT`      | No                              | `TRUE` to check PHP syntax before uploading. Default `FALSE`.                                                                |
-| `PHP_VERSION`   | No                              | PHP version for `PHP_LINT`: `8.3`, `8.4` or `8.5`. Default `8.4`.                                                            |
 | `SCRIPT`        | No                              | Script inside `SRC_PATH` to run on the server after the upload, e.g. `bin/post-deploy.sh`.                                   |
 | `CACHE_CLEAR`   | No                              | `TRUE` to clear the cache after the upload. Default `FALSE`.                                                                 |
 | `CACHE_COMMAND` | With `custom` and `CACHE_CLEAR` | Command that clears the cache. On Pressable and WP Engine it runs instead of the default. See [Clear the cache](#clear-the-cache). |
 | `DEBUG`         | No                              | `TRUE` for detailed SSH logs, useful when the connection fails. Default `FALSE`.                                             |
 
-### Renamed inputs
+### Removed inputs
 
-`SERVER_ID` is now `SSH_USER`. Workflows that still use `SERVER_ID` keep working and show a notice; rename it when you next edit the workflow.
+`SERVER_ID`, `PHP_LINT` and `PHP_VERSION` were removed in v2. See [Upgrading from v1](#upgrading-from-v1).
 
 ## Outputs
 
@@ -358,7 +375,7 @@ From then on, the deploy fails with `Host key verification failed` if the server
 | `CACHE_CLEAR is enabled but there is no cache command` | With `custom`, `CACHE_CLEAR: TRUE` needs `CACHE_COMMAND`.                                                                                              |
 | `rsync: mkdir ... failed: No such file or directory`   | A parent folder of `REMOTE_PATH` doesn't exist on the server, and rsync only creates the last one. Check `BASE_PATH` and `REMOTE_PATH`.               |
 | `Post-deploy script not found`                         | `SCRIPT` must be a path inside `SRC_PATH`, and the file must be uploaded. Check that `.deployignore` doesn't skip it.                                  |
-| `PHP linting failed`                                   | The lines above show the file and the error. If the code works on the server, check `PHP_VERSION`.                                                    |
+| `SERVER_ID was renamed to SSH_USER` or `PHP_LINT was removed` | The workflow was written for v1. See [Upgrading from v1](#upgrading-from-v1).                                                                   |
 | `SRC_PATH '...' is not a directory`                    | The folder doesn't exist in the repository, or the workflow is missing `actions/checkout` before this step.                                           |
 
 ## rsync flags
@@ -379,7 +396,16 @@ The most common ones. See the [rsync manual](https://linux.die.net/man/1/rsync) 
 | `--exclude`         | Skips files matching a pattern, e.g. `--exclude='*.log'`.                                                  |
 | `--exclude-from`    | Skips the patterns listed in a file, like `.deployignore`.                                                 |
 
-The action always adds `--chmod=D775,F664`, so folders end up with `775` permissions and files with `664`.
+The action always adds `--chmod=D775,F664`, so folders end up with `775` permissions and files with `664`, and the [safety rules](#built-in-safety-rules), before your `FLAGS`.
+
+## Upgrading from v1
+
+1. Change `@v1` to `@v2`.
+2. Rename `SERVER_ID:` to `SSH_USER:`.
+3. If you had `PHP_LINT: TRUE`, remove `PHP_LINT` and `PHP_VERSION` and add the lint step from [Check PHP syntax before uploading](#check-php-syntax-before-uploading) before the deploy step.
+4. Run once with `DRY_RUN: TRUE` and read the log. Files that v1 uploaded and v2 doesn't, like `.git` or `.github` when your `FLAGS` didn't exclude them, show as deleted on the server if you use `--delete-excluded`. That cleanup is expected.
+
+v1 keeps working and gets security fixes on the `releases/v1` branch.
 
 ## Contributing
 
@@ -388,7 +414,7 @@ Contributions are welcome. Before opening a pull request, run the tests with Doc
 ```bash
 shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
 test/e2e.sh
-test/compat.sh # Same server result as v1.0.0, against several rsync versions
+test/compat.sh # Same server result as v2.0.0, against several rsync versions
 ```
 
 ### Releasing

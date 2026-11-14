@@ -6,6 +6,6 @@ LABEL "com.github.actions.color"="red"
 LABEL "repository"="https://github.com/IlanVivanco/wp-deployment-action"
 LABEL "maintainer"="Ilán Vivanco <ilanvivanco@gmail.com>"
 
-RUN apk add --no-cache bash openssh-client php rsync
+RUN apk add --no-cache bash openssh-client rsync
 COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
