@@ -144,6 +144,17 @@ check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "does not run command substitutions" '! srv "test -e ~/INJECTED"'
 show_log_on_failure "$f"
 
+echo "Custom: absolute BASE_PATH and a non-default port"
+f=$FAILED
+srv 'rm -f ~/script-ran; mkdir -p ~/abs/public/wp-content/themes'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e BASE_PATH=/home/deploy/abs/public \
+	-e SRC_PATH=. -e REMOTE_PATH=wp-content/themes/my-theme \
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad" -e SCRIPT=bin/post.sh
+check "exits 0" '[ "$STATUS" -eq 0 ]'
+check "files land under the absolute path" 'srv "test -f ~/abs/public/wp-content/themes/my-theme/theme/style.php"'
+check "runs the script there" 'srv "test -f ~/script-ran"'
+show_log_on_failure "$f"
+
 echo "Custom: DRY_RUN changes nothing"
 f=$FAILED
 srv ': >~/wp.log; rm -rf ~/www/wp-content/themes/my-theme/*'

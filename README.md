@@ -380,8 +380,9 @@ The action always adds `--chmod=D775,F664`, so folders end up with `775` permiss
 Contributions are welcome. Before opening a pull request, run the tests with Docker. They build the action image, start a throwaway SSH server and deploy to it:
 
 ```bash
-shellcheck entrypoint.sh test/e2e.sh test/sshd/entrypoint.sh
+shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
 test/e2e.sh
+test/compat.sh # Same server result as v1, against several rsync versions
 ```
 
 ## License & Attribution

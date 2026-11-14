@@ -12,7 +12,7 @@
 - `DRY_RUN` input to preview the rsync changes without touching the server.
 - `DEBUG` input for verbose SSH output.
 - Outputs: `files_transferred`, `files_deleted` and `destination`.
-- ShellCheck and end-to-end tests against a throwaway SSH server.
+- ShellCheck and end-to-end tests against a throwaway SSH server, and `test/compat.sh`, which checks that the server ends up exactly as with `v1` against rsync 3.1, 3.2 and 3.5 servers.
 - A warning when `FLAGS` has `--delete` and `REMOTE_PATH` is empty, since that syncs against the WordPress root.
 - A clear error when `SSH_PRIVATE_KEY` is not a private key, for example the `.pub` file.
 - README rewritten as a step-by-step guide per host, with recipes, safety notes and troubleshooting.

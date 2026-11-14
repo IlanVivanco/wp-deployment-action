@@ -2,7 +2,7 @@
 FROM alpine:3.23
 RUN apk add --no-cache bash openssh rsync \
 	&& ssh-keygen -A \
-	&& printf 'Port 22\nPort 2222\nPasswordAuthentication no\nPerSourcePenalties no\n' >>/etc/ssh/sshd_config \
+	&& printf 'Port 22\nPort 2222\nPasswordAuthentication no\n' >>/etc/ssh/sshd_config \
 	&& adduser -D -s /bin/bash deploy \
 	&& passwd -u deploy \
 	&& printf '#!/bin/sh\necho "$*" >>"$HOME/wp.log"\n' >/usr/local/bin/wp \

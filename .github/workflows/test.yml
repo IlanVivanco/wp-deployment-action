@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck entrypoint.sh test/e2e.sh test/sshd/entrypoint.sh
+      - run: shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
 
   e2e:
     name: End-to-end
@@ -19,6 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: test/e2e.sh
+
+  compat:
+    name: Compatibility with v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: test/compat.sh v1
 
   action:
     name: Action wiring
