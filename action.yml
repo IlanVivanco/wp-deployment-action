@@ -1,21 +1,37 @@
 name: "WordPress Deployment Action"
-description: "Easily deploy code from GitHub to WordPress on Pressable or WP Engine using an SSH private key and the rsync command."
+description: "Deploy code from GitHub to WordPress on Pressable, WP Engine or any SSH server using an SSH private key and rsync."
 branding:
   icon: "upload-cloud"
   color: "red"
 
 inputs:
   SERVER_TYPE:
-    description: "The type of server to deploy to. So far, only Pressable ('preesable') and WP Engine ('wpengine') are supported"
+    description: "The type of server to deploy to: Pressable ('pressable'), WP Engine ('wpengine') or any other SSH server ('custom')."
     required: true
   SSH_PRIVATE_KEY:
-    description: "The private SSH key. You must save this in the GitHub Secrets and authorize it on Pressable or WP Engine."
+    description: "The private SSH key. You must save this in the GitHub Secrets and authorize it on the server."
     required: true
   SERVER_ID:
-    description: "The SSH username for Pressable deployments or the install name for WP Engine deployments."
+    description: "The SSH username for Pressable and custom deployments, or the install name for WP Engine deployments."
     required: true
+  SSH_HOST:
+    description: "The SSH host. Required when SERVER_TYPE is 'custom'; Pressable and WP Engine use their own host."
+    default: ""
+    required: false
+  SSH_PORT:
+    description: "The SSH port. Defaults to 22."
+    default: "22"
+    required: false
+  BASE_PATH:
+    description: "The WordPress root on the server, e.g. '~/www'. Required when SERVER_TYPE is 'custom'."
+    default: ""
+    required: false
+  SSH_KNOWN_HOSTS:
+    description: "Known hosts lines for the server. When set, the host key is checked strictly; otherwise it is read with ssh-keyscan and trusted on first use."
+    default: ""
+    required: false
   REMOTE_PATH:
-    description: "The remote path on the server where files should be deployed. Defaults to the site root directory."
+    description: "The remote path on the server where files should be deployed, relative to the site root. Defaults to the site root directory."
     default: ""
     required: false
   SRC_PATH:
@@ -34,10 +50,30 @@ inputs:
     description: "Set to 'TRUE' to clear cache after deployment. Defaults to 'FALSE'."
     default: "FALSE"
     required: false
-  SCRIPT:
-    description: "Custom script to run on the remote server after deployment."
+  CACHE_COMMAND:
+    description: "Command run on the server to clear the cache when CACHE_CLEAR is 'TRUE'. Required for 'custom'; replaces the Pressable and WP Engine defaults."
     default: ""
     required: false
+  SCRIPT:
+    description: "Path to a script, relative to the deployed directory, to run on the remote server after deployment."
+    default: ""
+    required: false
+  DRY_RUN:
+    description: "Set to 'TRUE' to run rsync with --dry-run and skip the script and cache clear. Defaults to 'FALSE'."
+    default: "FALSE"
+    required: false
+  DEBUG:
+    description: "Set to 'TRUE' for verbose SSH output. Defaults to 'FALSE'."
+    default: "FALSE"
+    required: false
+
+outputs:
+  files_transferred:
+    description: "Number of regular files transferred by rsync."
+  files_deleted:
+    description: "Number of files deleted on the server by rsync."
+  destination:
+    description: "The rsync destination, as user@host:path."
 
 runs:
   using: "docker"
@@ -46,9 +82,16 @@ runs:
     SERVER_TYPE: ${{ inputs.SERVER_TYPE }}
     SSH_PRIVATE_KEY: ${{ inputs.SSH_PRIVATE_KEY }}
     SERVER_ID: ${{ inputs.SERVER_ID }}
+    SSH_HOST: ${{ inputs.SSH_HOST }}
+    SSH_PORT: ${{ inputs.SSH_PORT }}
+    BASE_PATH: ${{ inputs.BASE_PATH }}
+    SSH_KNOWN_HOSTS: ${{ inputs.SSH_KNOWN_HOSTS }}
     REMOTE_PATH: ${{ inputs.REMOTE_PATH }}
     SRC_PATH: ${{ inputs.SRC_PATH }}
     FLAGS: ${{ inputs.FLAGS }}
     PHP_LINT: ${{ inputs.PHP_LINT }}
     CACHE_CLEAR: ${{ inputs.CACHE_CLEAR }}
+    CACHE_COMMAND: ${{ inputs.CACHE_COMMAND }}
     SCRIPT: ${{ inputs.SCRIPT }}
+    DRY_RUN: ${{ inputs.DRY_RUN }}
+    DEBUG: ${{ inputs.DEBUG }}

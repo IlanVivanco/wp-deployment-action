@@ -1,10 +1,10 @@
 # WordPress Deployment Action
 
-This GitHub Action allows you to easily deploy code directly from GitHub to a [WordPress](https://wordpress.org/) environment hosted on [Pressable](https://pressable.com/) or [WP Engine](https://wpengine.com/) by using an SSH private key and the rsync command.
+This GitHub Action allows you to easily deploy code directly from GitHub to a [WordPress](https://wordpress.org/) environment hosted on [Pressable](https://pressable.com/), [WP Engine](https://wpengine.com/) or any other server you can reach over SSH, by using an SSH private key and the rsync command.
 
 By default, the action deploys the repository's root directory. However, you can optionally deploy a specific directory, such as a theme or plugin, using the `SRC_PATH` option. Similarly, if you need to deploy to a different destination directory, you can specify it using the `REMOTE_PATH` option.
 
-You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax checks using the `PHP_LINT` flag. Additionally, custom commands can be executed on the server side by defining them with the `SCRIPT` option.
+You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax checks using the `PHP_LINT` flag. Additionally, custom commands can be executed on the server side by defining them with the `SCRIPT` option, and you can preview a deployment without changing anything with `DRY_RUN`.
 
 
 ## GitHub Action workflow
@@ -27,8 +27,8 @@ You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax 
             - 'feature/**'
       workflow_dispatch:
    env:
-      SERVER_TYPE: pressable # pressable or wpengine
-      SERVER_ID: pressable-username # Pressable SFTP username or WP Engine environment name
+      SERVER_TYPE: pressable # pressable, wpengine or custom
+      SERVER_ID: pressable-username # SSH username (Pressable, custom) or WP Engine environment name
       PROJECT_TYPE: theme # plugin or theme
       PROJECT_NAME: theme-name # Name of the plugin or theme
    jobs:
@@ -59,14 +59,44 @@ You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax 
 
 ## Setting up your SSH key
 
-1. **Generate a new SSH key pair:** Create a new SSH key pair to be used as a deploy key between your GitHub repository and Pressable/WP Engine. To keep things simple, generate a key pair with a blank passphrase, resulting in an unencrypted private key. You can do this with the following [this article](https://help.github.com/articles/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent/).
+1. **Generate a new SSH key pair:** Create a new SSH key pair to be used as a deploy key between your GitHub repository and your server. To keep things simple, generate a key pair with a blank passphrase, resulting in an unencrypted private key. You can follow [this article](https://help.github.com/articles/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent/).
 
-1. **Add the public SSH key:** Copy the contents of the public key (the file ending in .pub) and add it to your [Pressable](https://pressable.com/knowledgebase/connect-to-ssh-on-pressable/#connect-to-ssh-with-an-ssh-key/) or [WP Engine](https://wpengine.com/support/ssh-gateway/#Add_SSH_Key) configuration panel under the SSH keys section.
+1. **Add the public SSH key:** Copy the contents of the public key (the file ending in .pub) and add it to your [Pressable](https://pressable.com/knowledgebase/connect-to-ssh-on-pressable/#connect-to-ssh-with-an-ssh-key/) or [WP Engine](https://wpengine.com/support/ssh-gateway/#Add_SSH_Key) configuration panel under the SSH keys section. On any other server, append it to `~/.ssh/authorized_keys` for the SSH user.
 
-2. **Store the private key in GitHub:** In your GitHub repository, navigate to **`Settings > Secrets and variables > Actions`**, and create a new encrypted secret. You can name the secret whatever you like, but make sure you pass the same name when using it in the workflow.
+1. **Store the private key in GitHub:** In your GitHub repository, navigate to **`Settings > Secrets and variables > Actions`**, and create a new encrypted secret. You can name the secret whatever you like, but make sure you pass the same name when using it in the workflow.
 
-3. **Reference the private key in your workflow YML file:** In your GitHub Action workflow file, configure the SSH private key by referencing the secret you created. If you named the secret `PRESSABLE_SSH_KEY`, your code should look like this: `SSH_PRIVATE_KEY: ${{ secrets.PRESSABLE_SSH_KEY }}`
+1. **Reference the private key in your workflow YML file:** In your GitHub Action workflow file, configure the SSH private key by referencing the secret you created. If you named the secret `PRESSABLE_SSH_KEY`, your code should look like this: `SSH_PRIVATE_KEY: ${{ secrets.PRESSABLE_SSH_KEY }}`
 
+
+## Custom servers
+
+Set `SERVER_TYPE: custom` to deploy to any server you can reach over SSH, such as shared hosting. `SERVER_ID` is the SSH user, and you also set the host, the WordPress root and, if you clear the cache, the command that does it:
+
+```yml
+- name: 🔁 Deploy theme
+  uses: IlanVivanco/wp-deployment-action@v1
+  with:
+    SERVER_TYPE: custom
+    SERVER_ID: ssh-user
+    SSH_HOST: example.com
+    SSH_PORT: 22
+    BASE_PATH: '~/www' # WordPress root on the server
+    SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}
+    SSH_PRIVATE_KEY: ${{ secrets.SSH_KEY }}
+    SRC_PATH: theme
+    REMOTE_PATH: wp-content/themes/my-theme
+    FLAGS: -azrhi --delete --exclude-from=.deployignore
+    CACHE_CLEAR: TRUE
+    CACHE_COMMAND: wp cache flush
+```
+
+`BASE_PATH` can start with `~`, which expands to the SSH user's home on the server. `CACHE_COMMAND` runs as is in the SSH user's shell, so you can call a specific PHP binary or WP-CLI path (for example `/usr/bin/php8.3 ~/bin/wp cache flush`) when the server's default `php` is not the one WordPress uses.
+
+To deploy several folders to the same server, such as a theme and `mu-plugins`, add one step per folder. Leave `--delete` out of `FLAGS` for folders that also hold files that only exist on the server.
+
+## Host keys
+
+By default the action trusts the server's host key the first time it connects in each run, and refuses a different key for the rest of the run. To protect against a spoofed server, pass the expected keys in `SSH_KNOWN_HOSTS` and the host key is checked strictly. You can get the lines from a machine you trust with `ssh-keyscan -p 22 example.com` (for a port other than 22 the lines start with `[example.com]:2222`) and store them in a repository variable.
 
 ## Environment variables
 
@@ -74,23 +104,48 @@ This action requires or supports the following variables:
 
 ### Required
 
-| Name              | Type      | Usage                                                                                                              |
-| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `SSH_PRIVATE_KEY` | _secrets_ | The private SSH key. This must be stored in GitHub Secrets and authorized on Pressable or WP Engine.               |
-| `SERVER_TYPE`     | _string_  | The type of server to deploy to. Currently, only Pressable (`pressable`) and WP Engine (`wpengine`) are supported. |
-| `SERVER_ID`       | _string_  | The SSH username for Pressable deployments or the install name for WP Engine deployments.                          |
+| Name              | Type      | Usage                                                                                                                |
+| ----------------- | --------- | -------------------------------------------------------------------------------------------------------------------- |
+| `SSH_PRIVATE_KEY` | _secrets_ | The private SSH key. This must be stored in GitHub Secrets and authorized on the server.                             |
+| `SERVER_TYPE`     | _string_  | The type of server to deploy to: Pressable (`pressable`), WP Engine (`wpengine`) or any other SSH server (`custom`). |
+| `SERVER_ID`       | _string_  | The SSH username for Pressable and custom deployments, or the install name for WP Engine deployments.                |
+
+### Required for `custom`
+
+| Name        | Type     | Usage                                                     |
+| ----------- | -------- | --------------------------------------------------------- |
+| `SSH_HOST`  | _string_ | The SSH host. Pressable and WP Engine use their own host. |
+| `BASE_PATH` | _string_ | The WordPress root on the server, e.g. `~/www`.           |
 
 ### Optional
 
-| Name          | Type     | Usage                                                                                                     |
-| ------------- | -------- | --------------------------------------------------------------------------------------------------------- |
-| `REMOTE_PATH` | _string_ | The remote path on the server where files should be deployed. Defaults to the site root directory.        |
-| `SRC_PATH`    | _string_ | Local path to the source files for deployment. Defaults to the repository root.                           |
-| `FLAGS`       | _string_ | Rsync flags to control the file synchronization behavior. Defaults to `-azvrhi --inplace --exclude='.*'`. |
-| `PHP_LINT`    | _string_ | Set to `TRUE` to enable PHP linting before deployment. Defaults to `FALSE`.                               |
-| `CACHE_CLEAR` | _string_ | Set to `TRUE` to clear cache after deployment. Defaults to `FALSE`.                                       |
-| `SCRIPT`      | _string_ | Custom script to run on the remote server after deployment.                                               |
+| Name              | Type     | Usage                                                                                                                                            |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SSH_PORT`        | _string_ | The SSH port. Defaults to `22`.                                                                                                                  |
+| `SSH_KNOWN_HOSTS` | _string_ | Known hosts lines for the server. When set, the host key is checked strictly. See [Host keys](#host-keys).                                       |
+| `REMOTE_PATH`     | _string_ | The remote path, relative to the site root, where files should be deployed. Defaults to the site root directory.                                 |
+| `SRC_PATH`        | _string_ | Local path to the source files for deployment. Defaults to the repository root.                                                                  |
+| `FLAGS`           | _string_ | Rsync flags to control the file synchronization behavior. Defaults to `-azvrhi --inplace --exclude='.*'`.                                        |
+| `PHP_LINT`        | _string_ | Set to `TRUE` to enable PHP linting before deployment. Defaults to `FALSE`. Linting uses PHP 8.4, which may differ from the server's version.   |
+| `CACHE_CLEAR`     | _string_ | Set to `TRUE` to clear cache after deployment. Defaults to `FALSE`.                                                                              |
+| `CACHE_COMMAND`   | _string_ | Command that clears the cache when `CACHE_CLEAR` is `TRUE`. Required for `custom`; replaces the Pressable and WP Engine defaults.                |
+| `SCRIPT`          | _string_ | Path to a script, relative to the deployed directory, to run on the remote server after deployment. It runs with `bash` from the SSH user's home. |
+| `DRY_RUN`         | _string_ | Set to `TRUE` to run rsync with `--dry-run` and skip the script and the cache clear. Defaults to `FALSE`.                                       |
+| `DEBUG`           | _string_ | Set to `TRUE` for verbose SSH output. Defaults to `FALSE`.                                                                                       |
 
+The default cache commands are `wp cache flush` on Pressable, and `wp page-cache flush` plus `wp cdn-cache flush` on WP Engine.
+
+`FLAGS`, `SCRIPT` and `CACHE_COMMAND` are passed to rsync and the server's shell as written, so only set them from trusted values, never from pull request titles, branch names or other user input.
+
+## Outputs
+
+| Name                | Usage                                                       |
+| ------------------- | ----------------------------------------------------------- |
+| `files_transferred` | Number of regular files transferred by rsync.               |
+| `files_deleted`     | Number of files deleted on the server by rsync.             |
+| `destination`       | The rsync destination, as `user@host:path`.                 |
+
+With `DRY_RUN`, the counts are the files that would be transferred or deleted.
 
 ## Ignoring files
 
@@ -137,6 +192,13 @@ You can read the full details [here](https://linux.die.net/man/1/rsync), but the
 ## Contributing
 
 Contributions to this action are always welcome and highly encouraged.
+
+Run the tests with Docker before opening a pull request. They build the action image, start a throwaway SSH server and deploy to it:
+
+```bash
+shellcheck entrypoint.sh test/e2e.sh test/sshd/entrypoint.sh
+test/e2e.sh
+```
 
 ## License & Attribution
 
