@@ -209,15 +209,35 @@ show_log_on_failure "$f"
 
 echo "Safety rules: PROTECT adds paths, relative to REMOTE_PATH"
 f=$FAILED
-srv 'mkdir -p ~/root/wp-content/languages/es ~/root/wp-content/plugins/keep && touch ~/root/wp-content/languages/es/es.mo ~/root/wp-content/plugins/keep/k.php ~/root/wp-content/notes.txt'
+srv 'mkdir -p ~/root/wp-content/languages/es ~/root/wp-content/plugins/keep "$HOME/root/wp-content/my folder" && touch ~/root/wp-content/languages/es/es.mo ~/root/wp-content/plugins/keep/k.php ~/root/wp-content/notes.txt "$HOME/root/wp-content/my folder/keep.txt"'
 run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/root" \
 	-e SRC_PATH=site/wp-content -e REMOTE_PATH=wp-content -e "FLAGS=-azvri --delete" \
-	-e "PROTECT=$(printf '%s\n' 'wp-content/languages/' '/wp-content/plugins/keep/   wp-content/*.txt' 'robots.txt')"
+	-e "PROTECT=$(printf '%s\n' 'wp-content/languages/' '  /wp-content/plugins//keep/  ' 'wp-content/*.txt' 'wp-content/my folder/' 'robots.txt')"
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "keeps the folders and patterns in PROTECT" 'srv "test -f ~/root/wp-content/languages/es/es.mo && test -f ~/root/wp-content/plugins/keep/k.php && test -f ~/root/wp-content/notes.txt"'
+check "keeps PROTECT paths with spaces" 'srv "test -f \"\$HOME/root/wp-content/my folder/keep.txt\""'
 check "skips PROTECT paths outside REMOTE_PATH" '! grep -q "Never deleted on the server:.*robots.txt" "$WORK/out.log"'
 run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e "BASE_PATH=~/root" -e SRC_PATH=site -e "PROTECT=wp-content/../../etc"
 check "rejects .. in PROTECT" '[ "$STATUS" -ne 0 ] && grep -q "PROTECT paths can.t contain" "$WORK/out.log"'
+show_log_on_failure "$f"
+
+echo "Safety rules: other spellings of REMOTE_PATH and filter resets"
+f=$FAILED
+srv 'touch ~/root/stale.php'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/root" \
+	-e SRC_PATH=site -e REMOTE_PATH=./ -e "FLAGS=-azvri --delete-excluded"
+check "REMOTE_PATH ./ keeps the root rules" '[ "$STATUS" -eq 0 ] && srv "test -f ~/root/wp-config.php" && ! srv "test -e ~/root/stale.php"'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/root" \
+	-e SRC_PATH=site/wp-content -e REMOTE_PATH=./wp-content// -e "FLAGS=-azvri --delete-excluded"
+check "REMOTE_PATH ./wp-content// keeps uploads" '[ "$STATUS" -eq 0 ] && srv "test -f ~/root/wp-content/uploads/photo.jpg"'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e "BASE_PATH=~/root" -e SRC_PATH=site -e "FLAGS=-azvri --delete --filter=!"
+check "FLAGS with --filter=! fails" '[ "$STATUS" -ne 0 ] && grep -q "would remove the built-in safety rules" "$WORK/out.log"'
+printf '%s\n' 'node_modules' '!' >"$WORK/ws/reset.ignore"
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e "BASE_PATH=~/root" -e SRC_PATH=site -e "FLAGS=-azvri --delete --exclude-from=reset.ignore"
+check "an exclude file with ! fails" '[ "$STATUS" -ne 0 ] && grep -q "reset.ignore has a" "$WORK/out.log"'
+printf '%s\n' '.*' 'node_modules' '# a comment' '/vendor/' >"$WORK/ws/.deployignore"
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/root" -e SRC_PATH=site -e "FLAGS=-azvri --exclude=.git* --exclude-from=.deployignore" -e DRY_RUN=TRUE
+check "normal exclude rules still work" '[ "$STATUS" -eq 0 ]'
 show_log_on_failure "$f"
 
 echo "Removed v1 inputs"

@@ -51,7 +51,7 @@ inputs:
     default: "-azvrhi --inplace --exclude='.*'"
     required: false
   PROTECT:
-    description: "More server paths that are never deleted, relative to the WordPress root, one per line or separated by spaces. A trailing / protects a folder and everything in it, e.g. 'wp-content/languages/'. Adds to the built-in list (wp-config.php, uploads, cache, mu-plugins...)."
+    description: "More server paths that are never deleted, one per line, relative to the WordPress root. A trailing / protects a folder and everything in it, e.g. 'wp-content/languages/'. Adds to the built-in list (wp-config.php, uploads, cache, mu-plugins...)."
     default: ""
     required: false
   DRY_RUN:

@@ -39,12 +39,39 @@ validate() {
 	[[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || fail "SSH_PORT must be a number, got '${SSH_PORT}'."
 	[ -d "${SRC_PATH}" ] || fail "SRC_PATH '${SRC_PATH}' is not a directory."
 	[ -z "${PHP_VERSION}" ] || is_true "${PHP_LINT}" || echo "::warning::PHP_VERSION was removed in v2 with PHP_LINT and is ignored."
-	local path extra=()
-	# Split on spaces and new lines, without expanding * against local files
-	read -r -d '' -a extra <<<"${PROTECT}" || true
-	for path in "${extra[@]}"; do
-		[[ "/${path}/" != */../* ]] || fail "PROTECT paths can't contain '..', got '${path}'."
+
+	# The safety rules compare paths, so they need one spelling for each:
+	# ".", "./wp-content" and "wp-content//" are the root and wp-content
+	REMOTE_DIR="$(normalize_path "${REMOTE_PATH}")" || fail "REMOTE_PATH can't contain '..', got '${REMOTE_PATH}'."
+	# PROTECT has one path per line; spaces inside a path are kept
+	local line path
+	PROTECT_PATHS=()
+	while IFS= read -r line; do
+		line="${line#"${line%%[![:space:]]*}"}"
+		line="${line%"${line##*[![:space:]]}"}"
+		[ -n "${line}" ] || continue
+		path="$(normalize_path "${line}")" || fail "PROTECT paths can't contain '..', got '${line}'."
+		[ -n "${path}" ] || fail "PROTECT can't protect the whole WordPress root, got '${line}'."
+		# A trailing / marks a folder
+		[[ "${line}" != */ && "${line}" != */. ]] || path="${path}/"
+		PROTECT_PATHS+=("${path}")
+	done <<<"${PROTECT}"
+}
+
+# Print a server path relative to the WordPress root without leading, trailing
+# or repeated slashes and without "." parts; the root prints as "". Fails on "..".
+normalize_path() {
+	local part parts=() out=()
+	IFS=/ read -r -a parts <<<"$1"
+	for part in "${parts[@]}"; do
+		case "${part}" in
+		"" | .) ;;
+		..) return 1 ;;
+		*) out+=("${part}") ;;
+		esac
 	done
+	local IFS=/
+	echo "${out[*]}"
 }
 
 # Set up environment variables
@@ -91,6 +118,7 @@ init() {
 	SERVER_DEST="${SSH_REMOTE}:${SERVER_PATH}"
 
 	parse_flags "$FLAGS"
+	reject_filter_resets
 	safety_rules
 	if [ -z "${REMOTE_PATH}" ] && [[ " ${FLAGS_ARRAY[*]} " == *" --delete"* ]]; then
 		echo "::warning::FLAGS has --delete and REMOTE_PATH is empty, so files on the server's WordPress root that are not in SRC_PATH will be deleted. Try DRY_RUN first."
@@ -130,16 +158,12 @@ PROTECTED=(
 # Build the rsync rules for NEVER_UPLOAD and for the PROTECTED paths inside
 # REMOTE_PATH. They go before FLAGS, and rsync applies the first rule that matches.
 safety_rules() {
-	local remote="${REMOTE_PATH#/}" rule path
-	remote="${remote%/}"
+	local remote="${REMOTE_DIR}" rule path
 	SAFETY_RULES=()
 	PROTECTED_HERE=()
 	for rule in "${NEVER_UPLOAD[@]}"; do SAFETY_RULES+=("--filter=- ${rule}"); done
 	# PROTECT adds paths to the defaults
-	local extra=()
-	read -r -d '' -a extra <<<"${PROTECT}" || true
-	for path in "${PROTECTED[@]}" "${extra[@]}"; do
-		path="${path#/}"
+	for path in "${PROTECTED[@]}" "${PROTECT_PATHS[@]}"; do
 		if [ -z "${remote}" ]; then
 			rule="/${path}"
 		elif [[ "${path}" == "${remote}/"?* ]]; then
@@ -152,6 +176,42 @@ safety_rules() {
 		[[ "${rule}" != */ ]] || rule="${rule}***"
 		SAFETY_RULES+=("--filter=P ${rule}")
 		PROTECTED_HERE+=("${path}")
+	done
+}
+
+# rsync drops every earlier filter rule on a "!" or "clear" rule, and per-folder
+# filter files can do the same, which would remove the safety rules. Refuse
+# them in FLAGS and in the filter files FLAGS reads.
+reject_filter_resets() {
+	local i flag next value file
+	local msg="would remove the built-in safety rules"
+	for ((i = 0; i < ${#FLAGS_ARRAY[@]}; i++)); do
+		flag="${FLAGS_ARRAY[i]}"
+		next="${FLAGS_ARRAY[i + 1]:-}"
+		value=""
+		file=""
+		case "${flag}" in
+		--exclude=* | --include=* | --filter=*) value="${flag#*=}" ;;
+		--exclude | --include | --filter) value="${next}" ;;
+		--exclude-from=* | --include-from=*) file="${flag#*=}" ;;
+		--exclude-from | --include-from) file="${next}" ;;
+		--*) ;;
+		-f) value="${next}" ;;
+		-f*) value="${flag#-f}" ;;
+		-*F*) fail "FLAGS can't use -F: per-folder .rsync-filter files ${msg}." ;;
+		esac
+		# Trim spaces around the rule
+		value="${value#"${value%%[![:space:]]*}"}"
+		value="${value%"${value##*[![:space:]]}"}"
+		case "${value}" in
+		"!" | clear) fail "FLAGS can't reset the filter rules with '${value}': it ${msg}." ;;
+		dir-merge* | :*) fail "FLAGS can't use per-folder filter files (${value}): they ${msg}." ;;
+		merge[,[:space:]]* | .[,[:space:]]*) file="${value#*[[:space:]]}" ;;
+		esac
+		if [ -n "${file}" ] && [ -f "${file}" ] &&
+			grep -Eq '^[[:space:]]*(!|clear|(merge|dir-merge|\.|:)([,[:space:]].*)?)[[:space:]]*$' "${file}"; then
+			fail "${file} has a '!', 'clear' or merge line, which ${msg}. Remove that line."
+		fi
 	done
 }
 

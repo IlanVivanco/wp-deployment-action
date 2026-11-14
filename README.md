@@ -227,7 +227,7 @@ Then pass it in `FLAGS`. The path to the file is relative to the **repository ro
           FLAGS: -azvrhi --inplace --exclude-from=theme/.deployignore
 ```
 
-Keep the `.*` line. Your `FLAGS` replace the default ones, including the default `--exclude='.*'`, so without that line `.git` and other hidden files get uploaded.
+Keep the `.*` line. Your `FLAGS` replace the default ones, including the default `--exclude='.*'`. The [safety rules](#built-in-safety-rules) always skip `.git`, `.github` and `.env` files, but without that line other hidden files, like `.eslintrc` or `.vscode/`, get uploaded.
 
 ### Clear the cache
 
@@ -301,7 +301,7 @@ These apply on every deploy and can't be turned off with `FLAGS` or `.deployigno
 
 Only the paths inside `REMOTE_PATH` apply. A deploy to `wp-content/themes/my-theme` doesn't touch any of them anyway, while a deploy to the WordPress root or to `wp-content` keeps them all. When `REMOTE_PATH` is one of these folders, like `wp-content/mu-plugins`, you are deploying into it on purpose, so it isn't protected: don't use `--delete` there.
 
-To protect more paths, list them in `PROTECT`, relative to the WordPress root. A trailing `/` protects a folder and everything in it:
+To protect more paths, list them in `PROTECT`, one per line, relative to the WordPress root. A trailing `/` protects a folder and everything in it:
 
 ```yml
           PROTECT: |
@@ -310,7 +310,9 @@ To protect more paths, list them in `PROTECT`, relative to the WordPress root. A
             robots.txt
 ```
 
-`PROTECT` adds to the built-in list; the built-in paths can't be removed.
+`PROTECT` adds to the built-in list; the built-in paths can't be removed. Each line is an rsync pattern, so `*` and `?` work as wildcards (`wp-content/*.log`), and spaces inside a path are kept.
+
+For the same reason, `FLAGS` and the filter files it reads, like `.deployignore`, can't use a `!` or `clear` line, which resets every rule before it, nor per-folder filter files (`-F`, `dir-merge`). The action stops with an error if they do.
 
 The deploy log lists both, under "Never uploaded" and "Never deleted on the server".
 
@@ -337,7 +339,7 @@ The deploy log lists both, under "Never uploaded" and "Never deleted on the serv
 | `SRC_PATH`    | No       | Folder in the repository to upload. Default `.`, the whole repository.                                                               |
 | `REMOTE_PATH` | No       | Folder on the server, relative to the WordPress root, e.g. `wp-content/themes/my-theme`. Default: the WordPress root.                |
 | `FLAGS`       | No       | rsync flags. Default `-azvrhi --inplace --exclude='.*'`. Setting it replaces the default. See [rsync flags](#rsync-flags).            |
-| `PROTECT`     | No       | More server paths that are never deleted, relative to the WordPress root. See [Built-in safety rules](#built-in-safety-rules).      |
+| `PROTECT`     | No       | More server paths that are never deleted, one per line, relative to the WordPress root. See [Built-in safety rules](#built-in-safety-rules). |
 | `DRY_RUN`     | No       | `TRUE` to only show what would change. rsync runs with `--dry-run`, and `SCRIPT` and the cache clear are skipped. Default `FALSE`.   |
 
 ### After the deploy
@@ -389,6 +391,7 @@ From then on, the deploy fails with `Host key verification failed` if the server
 | `Post-deploy script not found`                         | `SCRIPT` must be a path inside `SRC_PATH`, and the file must be uploaded. Check that `.deployignore` doesn't skip it.                                  |
 | `SERVER_ID was renamed to SSH_USER` or `PHP_LINT was removed` | The workflow was written for v1. See [Upgrading from v1](#upgrading-from-v1).                                                                   |
 | `PROTECT paths can't contain '..'`                     | `PROTECT` paths are relative to the WordPress root and must stay inside it.                                                                          |
+| `... would remove the built-in safety rules`           | `FLAGS` or `.deployignore` has a `!` or `clear` line, or uses per-folder filter files. Remove it; see [Built-in safety rules](#built-in-safety-rules). |
 | `SRC_PATH '...' is not a directory`                    | The folder doesn't exist in the repository, or the workflow is missing `actions/checkout` before this step.                                           |
 
 ## rsync flags
