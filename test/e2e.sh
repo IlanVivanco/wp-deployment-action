@@ -66,7 +66,8 @@ echo '<?php // theme' >"$WORK/ws/theme/style.php"
 echo '<?php // inc' >"$WORK/ws/theme/inc/a.php"
 echo '<?php // mu' >"$WORK/ws/mu-plugins/my-mu-plugin.php"
 echo '<?php echo 1' >"$WORK/ws/bad/broken.php"
-echo 'touch ~/script-ran' >"$WORK/ws/bin/post.sh"
+# Re-executes itself, so it needs the executable bit
+printf '%s\n' '[ "$1" = child ] || exec "$0" child' 'touch ~/script-ran' >"$WORK/ws/bin/post.sh"
 
 echo "Pressable: cache clear without SCRIPT"
 f=$FAILED
@@ -92,7 +93,7 @@ run_action -e SERVER_TYPE=wpengine -e SRC_PATH=. -e REMOTE_PATH=wp-content/plugi
 	-e "FLAGS=-azrh --exclude=github_output --exclude=bad" -e CACHE_CLEAR=true -e SCRIPT=bin/post.sh
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "files land in sites/<id>" 'srv "test -f ~/sites/deploy/wp-content/plugins/x/theme/style.php"'
-check "runs the script" 'srv "test -f ~/script-ran"'
+check "runs the script, executable" 'srv "test -f ~/script-ran"'
 check "flushes page and CDN cache" 'srv "grep -q page-cache ~/wp.log && grep -q cdn-cache ~/wp.log"'
 show_log_on_failure "$f"
 
@@ -127,6 +128,20 @@ run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BA
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "deploys the mu-plugin" 'srv "test -f ~/www/wp-content/mu-plugins/my-mu-plugin.php"'
 check "keeps files that only exist on the server" 'srv "test -f ~/www/wp-content/mu-plugins/server-only.php"'
+show_log_on_failure "$f"
+
+echo "Custom: BASE_PATH with spaces and shell syntax stays literal"
+f=$FAILED
+srv 'rm -f ~/script-ran ~/INJECTED; mkdir -p ~/"site root" ~/"\$(touch ~/INJECTED)x"'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/site root" \
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad" -e SCRIPT=bin/post.sh
+check "exits 0" '[ "$STATUS" -eq 0 ]'
+check "deploys under the path with a space" 'srv "test -f ~/\"site root\"/bin/post.sh"'
+check "runs the script there" 'srv "test -f ~/script-ran"'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e 'BASE_PATH=~/$(touch ~/INJECTED)x' \
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad" -e SCRIPT=bin/post.sh
+check "exits 0" '[ "$STATUS" -eq 0 ]'
+check "does not run command substitutions" '! srv "test -e ~/INJECTED"'
 show_log_on_failure "$f"
 
 echo "Custom: DRY_RUN changes nothing"

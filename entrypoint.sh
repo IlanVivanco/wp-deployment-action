@@ -226,6 +226,18 @@ sync_files() {
 	rm -f "${rsync_log}"
 }
 
+# Quote a path for the remote shell; a leading ~ becomes "$HOME" so it still
+# expands on the server while the rest of the path stays literal
+remote_quote() {
+	local path="$1"
+	# shellcheck disable=SC2016,SC2088 # literal "$HOME" and ~ for the remote shell
+	case "${path}" in
+	"~") echo '"$HOME"' ;;
+	"~/"*) echo "\"\$HOME\"/$(printf '%q' "${path#\~/}")" ;;
+	*) printf '%q\n' "${path}" ;;
+	esac
+}
+
 # Run the post-deploy script and the cache clear in a single remote call
 run_remote() {
 	local commands=()
@@ -239,9 +251,10 @@ run_remote() {
 		# Base path stays unquoted so a leading ~ expands on the server
 		local script_rel script_path
 		script_rel="${REMOTE_PATH%/}/${SCRIPT#/}"
-		script_path="${SERVER_BASE_PATH}/$(printf '%q' "${script_rel#/}")"
+		script_path="$(remote_quote "${SERVER_BASE_PATH%/}/${script_rel#/}")"
 		echo "Script command: bash ${script_path}"
 		commands+=("if [ ! -f ${script_path} ]; then echo Post-deploy script not found: ${script_path} >&2; exit 1; fi")
+		commands+=("chmod +x ${script_path}")
 		commands+=("bash ${script_path}")
 	fi
 

@@ -27,7 +27,7 @@ inputs:
     default: ""
     required: false
   SSH_KNOWN_HOSTS:
-    description: "Known hosts lines for the server. When set, the host key is checked strictly; otherwise it is read with ssh-keyscan and trusted on first use."
+    description: "Known hosts lines for the server. When set, the host key is checked strictly; otherwise the key the server presents on the first connection is trusted (StrictHostKeyChecking=accept-new)."
     default: ""
     required: false
   REMOTE_PATH:
