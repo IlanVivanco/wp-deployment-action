@@ -1,102 +1,107 @@
 name: "WordPress Deployment Action"
-description: "Deploy code from GitHub to WordPress on Pressable, WP Engine or any SSH server using an SSH private key and rsync."
+description: "Deploy a WordPress theme, plugin or site over SSH with rsync, to Pressable, WP Engine or any SSH server."
 branding:
   icon: "upload-cloud"
   color: "red"
 
 inputs:
+  # Connection
   SERVER_TYPE:
-    description: "The type of server to deploy to: Pressable ('pressable'), WP Engine ('wpengine') or any other SSH server ('custom')."
-    required: true
-  SSH_PRIVATE_KEY:
-    description: "The private SSH key. You must save this in the GitHub Secrets and authorize it on the server."
+    description: "Where you deploy: 'pressable', 'wpengine' or 'custom' (any other SSH server)."
     required: true
   SERVER_ID:
-    description: "The SSH username for Pressable and custom deployments, or the install name for WP Engine deployments."
+    description: "Pressable and custom: the SSH username. WP Engine: the environment name (the 'my-env' in my-env.wpengine.com)."
+    required: true
+  SSH_PRIVATE_KEY:
+    description: "The private SSH key, from a secret, e.g. secrets.SSH_PRIVATE_KEY. Its public key must be authorized on the server."
     required: true
   SSH_HOST:
-    description: "The SSH host. Required when SERVER_TYPE is 'custom'; Pressable and WP Engine use their own host."
+    description: "Required with 'custom'. The server to connect to, e.g. 'example.com'. Ignored on Pressable and WP Engine."
+    default: ""
+    required: false
+  BASE_PATH:
+    description: "Required with 'custom'. The WordPress root on the server (the folder with wp-config.php), e.g. '~/www'. Ignored on Pressable and WP Engine."
     default: ""
     required: false
   SSH_PORT:
     description: "The SSH port. Defaults to 22."
     default: "22"
     required: false
-  BASE_PATH:
-    description: "The WordPress root on the server, e.g. '~/www'. Required when SERVER_TYPE is 'custom'."
-    default: ""
-    required: false
   SSH_KNOWN_HOSTS:
-    description: "Known hosts lines for the server. When set, the host key is checked strictly; otherwise the key the server presents on the first connection is trusted (StrictHostKeyChecking=accept-new)."
+    description: "The server's host key lines, from 'ssh-keyscan example.com'. When set, the action refuses servers with another key. When empty, it trusts the key presented on the first connection."
     default: ""
     required: false
-  REMOTE_PATH:
-    description: "The remote path on the server where files should be deployed, relative to the site root. Defaults to the site root directory."
-    default: ""
-    required: false
+
+  # What to deploy
   SRC_PATH:
-    description: "Local path to the source files to deploy. Defaults to the repository root."
+    description: "Folder in the repository to upload, e.g. 'theme'. Defaults to '.', the whole repository."
     default: "."
     required: false
+  REMOTE_PATH:
+    description: "Folder on the server, relative to the WordPress root, e.g. 'wp-content/themes/my-theme'. Defaults to the WordPress root."
+    default: ""
+    required: false
   FLAGS:
-    description: "Rsync flags to control the behavior of file synchronization."
+    description: "rsync flags. Setting them replaces the default. Add --delete to remove server files that are not in SRC_PATH."
     default: "-azvrhi --inplace --exclude='.*'"
     required: false
+  DRY_RUN:
+    description: "Set to 'TRUE' to only show what would change: nothing is uploaded or deleted, and SCRIPT and the cache clear are skipped. Defaults to 'FALSE'."
+    default: "FALSE"
+    required: false
+
+  # Checks and after the deploy
   PHP_LINT:
-    description: "Set to 'TRUE' to enable PHP linting before deployment. Defaults to 'FALSE'."
+    description: "Set to 'TRUE' to check the syntax of every PHP file in SRC_PATH before uploading. Defaults to 'FALSE'."
     default: "FALSE"
     required: false
   PHP_VERSION:
     description: "PHP version used by PHP_LINT: '8.3', '8.4' or '8.5'. Defaults to '8.4'."
     default: "8.4"
     required: false
+  SCRIPT:
+    description: "Script inside SRC_PATH to run on the server with bash after the upload, e.g. 'bin/post-deploy.sh'."
+    default: ""
+    required: false
   CACHE_CLEAR:
-    description: "Set to 'TRUE' to clear cache after deployment. Defaults to 'FALSE'."
+    description: "Set to 'TRUE' to clear the cache after the upload. Defaults to 'FALSE'."
     default: "FALSE"
     required: false
   CACHE_COMMAND:
-    description: "Command run on the server to clear the cache when CACHE_CLEAR is 'TRUE'. Required for 'custom'; replaces the Pressable and WP Engine defaults."
+    description: "Required with 'custom' when CACHE_CLEAR is 'TRUE'. Command that clears the cache, e.g. 'wp cache flush'. On Pressable and WP Engine it runs instead of the default."
     default: ""
-    required: false
-  SCRIPT:
-    description: "Path to a script, relative to the deployed directory, to run on the remote server after deployment."
-    default: ""
-    required: false
-  DRY_RUN:
-    description: "Set to 'TRUE' to run rsync with --dry-run and skip the script and cache clear. Defaults to 'FALSE'."
-    default: "FALSE"
     required: false
   DEBUG:
-    description: "Set to 'TRUE' for verbose SSH output. Defaults to 'FALSE'."
+    description: "Set to 'TRUE' for detailed SSH logs, useful when the connection fails. Defaults to 'FALSE'."
     default: "FALSE"
     required: false
 
 outputs:
   files_transferred:
-    description: "Number of regular files transferred by rsync."
+    description: "Number of files uploaded. With DRY_RUN, the files that would be uploaded."
   files_deleted:
-    description: "Number of files deleted on the server by rsync."
+    description: "Number of files deleted on the server. With DRY_RUN, the files that would be deleted."
   destination:
-    description: "The rsync destination, as user@host:path."
+    description: "Where the files went, as user@host:path."
 
 runs:
   using: "docker"
   image: "Dockerfile"
   env:
     SERVER_TYPE: ${{ inputs.SERVER_TYPE }}
-    SSH_PRIVATE_KEY: ${{ inputs.SSH_PRIVATE_KEY }}
     SERVER_ID: ${{ inputs.SERVER_ID }}
+    SSH_PRIVATE_KEY: ${{ inputs.SSH_PRIVATE_KEY }}
     SSH_HOST: ${{ inputs.SSH_HOST }}
-    SSH_PORT: ${{ inputs.SSH_PORT }}
     BASE_PATH: ${{ inputs.BASE_PATH }}
+    SSH_PORT: ${{ inputs.SSH_PORT }}
     SSH_KNOWN_HOSTS: ${{ inputs.SSH_KNOWN_HOSTS }}
-    REMOTE_PATH: ${{ inputs.REMOTE_PATH }}
     SRC_PATH: ${{ inputs.SRC_PATH }}
+    REMOTE_PATH: ${{ inputs.REMOTE_PATH }}
     FLAGS: ${{ inputs.FLAGS }}
+    DRY_RUN: ${{ inputs.DRY_RUN }}
     PHP_LINT: ${{ inputs.PHP_LINT }}
     PHP_VERSION: ${{ inputs.PHP_VERSION }}
+    SCRIPT: ${{ inputs.SCRIPT }}
     CACHE_CLEAR: ${{ inputs.CACHE_CLEAR }}
     CACHE_COMMAND: ${{ inputs.CACHE_COMMAND }}
-    SCRIPT: ${{ inputs.SCRIPT }}
-    DRY_RUN: ${{ inputs.DRY_RUN }}
     DEBUG: ${{ inputs.DEBUG }}

@@ -13,8 +13,13 @@
 - `DEBUG` input for verbose SSH output.
 - Outputs: `files_transferred`, `files_deleted` and `destination`.
 - ShellCheck and end-to-end tests against a throwaway SSH server.
+- A warning when `FLAGS` has `--delete` and `REMOTE_PATH` is empty, since that syncs against the WordPress root.
+- A clear error when `SSH_PRIVATE_KEY` is not a private key, for example the `.pub` file.
+- README rewritten as a step-by-step guide per host, with recipes, safety notes and troubleshooting.
 
 ### Fixed
+
+- The README said `.deployignore` goes in the source folder; `--exclude-from` paths are relative to the repository root.
 
 - `CACHE_CLEAR: TRUE` without `SCRIPT` failed with a shell syntax error after the files were synced.
 - The deploy failed when `~/.ssh` already existed without the `ctl/` folder, for example when a previous step created it.

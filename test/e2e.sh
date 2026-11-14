@@ -178,6 +178,10 @@ run_action -e SERVER_TYPE=custom -e "BASE_PATH=~/www"
 check "custom without SSH_HOST fails" '[ "$STATUS" -ne 0 ] && grep -q "SSH_HOST is required" "$WORK/out.log"'
 run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e "BASE_PATH=~/www" -e CACHE_CLEAR=TRUE
 check "custom CACHE_CLEAR without CACHE_COMMAND fails" '[ "$STATUS" -ne 0 ] && grep -q "Set CACHE_COMMAND" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SSH_PRIVATE_KEY="$(cat "$WORK/key.pub")"
+check "a public key instead of the private one fails clearly" '[ "$STATUS" -ne 0 ] && grep -q "doesn.t look like a private key" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e "FLAGS=-azrh --delete" -e DRY_RUN=TRUE
+check "--delete on the WordPress root warns" '[ "$STATUS" -eq 0 ] && grep -q "::warning::FLAGS has --delete and REMOTE_PATH is empty" "$WORK/out.log"'
 run_action -e SERVER_TYPE=kinsta
 check "unknown SERVER_TYPE fails" '[ "$STATUS" -ne 0 ] && grep -q "Unknown SERVER_TYPE" "$WORK/out.log"'
 run_action -e SERVER_TYPE=pressable -e SRC_PATH=bad -e PHP_LINT=TRUE

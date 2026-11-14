@@ -32,7 +32,10 @@ jobs:
         with:
           SERVER_TYPE: custom
           SERVER_ID: deploy
-          SSH_PRIVATE_KEY: not-a-key
+          SSH_PRIVATE_KEY: |
+            -----BEGIN OPENSSH PRIVATE KEY-----
+            not-a-real-key
+            -----END OPENSSH PRIVATE KEY-----
           BASE_PATH: ~/www
       - name: Check the step failed
         if: steps.missing-host.outcome != 'failure'

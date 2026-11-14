@@ -31,6 +31,7 @@ validate() {
 	DRY_RUN="${DRY_RUN:-"false"}"
 	DEBUG="${DEBUG:-"false"}"
 
+	[[ "${SSH_PRIVATE_KEY}" == *"PRIVATE KEY-----"* ]] || fail "SSH_PRIVATE_KEY doesn't look like a private key. Paste the whole private key file, including the -----BEGIN and -----END lines, not the .pub file."
 	[[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || fail "SSH_PORT must be a number, got '${SSH_PORT}'."
 	[ -d "${SRC_PATH}" ] || fail "SRC_PATH '${SRC_PATH}' is not a directory."
 	if is_true "${PHP_LINT}"; then
@@ -85,6 +86,9 @@ init() {
 	SERVER_DEST="${SSH_USER}:${SERVER_PATH}"
 
 	parse_flags "$FLAGS"
+	if [ -z "${REMOTE_PATH}" ] && [[ " ${FLAGS_ARRAY[*]} " == *" --delete"* ]]; then
+		echo "::warning::FLAGS has --delete and REMOTE_PATH is empty, so files on the server's WordPress root that are not in SRC_PATH will be deleted. Try DRY_RUN first."
+	fi
 	print_info
 }
 
