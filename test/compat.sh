@@ -2,7 +2,7 @@
 # Assertions are eval-ed strings, so single quotes are intended
 # shellcheck disable=SC2016
 # Backward compatibility test: deploys the same fixtures with the image built
-# from a released ref (v1.0.0, the first release, by default) and with the working tree, against SSH
+# from a released ref (v2.0.0, the first v2 release, by default) and with the working tree, against SSH
 # servers with different rsync versions, and checks that both leave the server
 # in the same state.
 # Usage: test/compat.sh [ref] (needs Docker). KEEP=1 keeps the temp files.
@@ -10,7 +10,7 @@
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REF="${1:-v1.0.0}"
+REF="${1:-v2.0.0}"
 WORK="$(mktemp -d)"
 NET="wpda-compat-$$"
 SRV="wpda-compat-srv-$$"
@@ -95,7 +95,7 @@ run_with() {
 	docker run --rm --network "$NET" \
 		-e HOME=/github/home -v "$WORK/home-$label:/github/home" \
 		-v "$WORK/repo:/github/workspace" -w /github/workspace \
-		-e SSH_PRIVATE_KEY="$(cat "$WORK/key")" -e SERVER_ID=deploy \
+		-e SSH_PRIVATE_KEY="$(cat "$WORK/key")" -e SSH_USER=deploy \
 		-e PHP_LINT=true -e CACHE_CLEAR=true -e SCRIPT=bin/post-deploy.sh \
 		-e REMOTE_PATH=wp-content/themes/my-theme \
 		"$@" "$image" >"$WORK/$label.log" 2>&1
@@ -141,15 +141,15 @@ for server in "${SERVERS[@]}"; do
 	for _ in $(seq 20); do srv 'true' 2>/dev/null && docker exec "$SRV" sh -c 'cat /proc/net/tcp* | grep -q ":0016 "' && break; sleep 0.5; done
 	echo "Server: $server ($(docker exec "$SRV" rsync --version | head -1 | cut -d' ' -f1-4))"
 
-	make_repo "$WORK/repo" full cd-pressable no
+	make_repo "$WORK/repo" full cd-pressable
 	compare "pressable, --delete, full .deployignore, script cds into the theme" -e SERVER_TYPE=pressable -e "FLAGS=$FLAGS_DELETE"
-	make_repo "$WORK/repo" no-dotfiles template no
+	make_repo "$WORK/repo" no-dotfiles template
 	compare "pressable, no --delete, .deployignore without .*, template script" -e SERVER_TYPE=pressable -e "FLAGS=$FLAGS_KEEP"
-	make_repo "$WORK/repo" empty empty no
+	make_repo "$WORK/repo" empty empty
 	compare "pressable, -azvri, empty .deployignore, empty script" -e SERVER_TYPE=PRESSABLE -e "FLAGS=$FLAGS_NO_H"
-	make_repo "$WORK/repo" full cd-wpengine no
+	make_repo "$WORK/repo" full cd-wpengine
 	compare "wpengine, --delete, full .deployignore, script cds into the theme" -e SERVER_TYPE=wpengine -e "FLAGS=$FLAGS_DELETE"
-	make_repo "$WORK/repo" empty template no
+	make_repo "$WORK/repo" empty template
 	compare "wpengine, no --delete, empty .deployignore, template script" -e SERVER_TYPE=wpengine -e "FLAGS=$FLAGS_KEEP"
 	make_repo "$WORK/repo" full template yes
 	compare "pressable, PHP syntax error stops the deploy" -e SERVER_TYPE=pressable -e "FLAGS=$FLAGS_DELETE"

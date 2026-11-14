@@ -21,13 +21,19 @@ jobs:
       - run: test/e2e.sh
 
   compat:
-    name: Compatibility with v1.0.0
+    name: Compatibility with v2.0.0
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - run: test/compat.sh v1.0.0
+      # Until v2.0.0 is released there is nothing to compare with
+      - run: |
+          if git rev-parse -q --verify refs/tags/v2.0.0 >/dev/null; then
+            test/compat.sh v2.0.0
+          else
+            echo "v2.0.0 is not released yet, skipping."
+          fi
 
   action:
     name: Action wiring

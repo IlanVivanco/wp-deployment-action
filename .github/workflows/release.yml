@@ -1,10 +1,11 @@
-# Publishes a release. Run it by hand from the Actions tab, on main, with the
-# version to release. It tests and pushes the image to GHCR first, and only then
+# Publishes a release. Run it by hand from the Actions tab with the version to
+# release: on main for the current major version, or on releases/vX for a fix
+# to an older one (e.g. releases/v1 for 1.x). It tests and pushes the image to GHCR first, and only then
 # creates the vX.Y.Z tag and moves vX and vX.Y to it, so a tag never points to
 # an image that doesn't exist.
 #
-# The tagged commit is main plus one change: action.yml uses the published image
-# instead of building the Dockerfile. That commit is not pushed to main.
+# The tagged commit is the branch plus one change: action.yml uses the published image
+# instead of building the Dockerfile. That commit is not pushed to the branch.
 name: Release
 on:
   workflow_dispatch:
@@ -32,8 +33,12 @@ jobs:
 
       - name: Check the version
         run: |
-          [ "${GITHUB_REF}" = refs/heads/main ] || { echo "::error::Run the release from main."; exit 1; }
           [[ "${VERSION}" =~ ^([1-9][0-9]*)\.([0-9]+)\.([0-9]+)$ ]] || { echo "::error::Use MAJOR.MINOR.PATCH, e.g. 1.2.0."; exit 1; }
+          case "${GITHUB_REF}" in
+          refs/heads/main) LATEST=true ;;
+          "refs/heads/releases/v${BASH_REMATCH[1]}") LATEST=false ;;
+          *) echo "::error::Run the release from main, or from releases/v${BASH_REMATCH[1]} for a ${BASH_REMATCH[1]}.x fix."; exit 1 ;;
+          esac
           if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
             echo "::error::v${VERSION} already exists."; exit 1
           fi
@@ -42,6 +47,7 @@ jobs:
             echo "MAJOR=${BASH_REMATCH[1]}"
             echo "MINOR=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
             echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}"
+            echo "LATEST=${LATEST}"
           } >>"${GITHUB_ENV}"
 
       - uses: docker/setup-qemu-action@v3
@@ -107,4 +113,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           awk -v head="## v${VERSION}" '$0 == head { found = 1; next } found && /^## / { exit } found' CHANGELOG.md >notes.md
-          gh release create "v${VERSION}" --title "v${VERSION}" --notes-file notes.md --verify-tag
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes-file notes.md --verify-tag --latest="${LATEST}"
