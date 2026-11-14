@@ -1,107 +1,215 @@
 # WordPress Deployment Action
 
-This GitHub Action allows you to easily deploy code directly from GitHub to a [WordPress](https://wordpress.org/) environment hosted on [Pressable](https://pressable.com/) or [WP Engine](https://wpengine.com/) by using an SSH private key and the rsync command.
+Deploy a theme, plugin or whole site from GitHub to a [WordPress](https://wordpress.org/) server over SSH with rsync. It works with [Pressable](https://pressable.com/) and [WP Engine](https://wpengine.com/) out of the box, and with any other host that gives you SSH access (`custom`).
 
-By default, the action deploys the repository's root directory. However, you can optionally deploy a specific directory, such as a theme or plugin, using the `SRC_PATH` option. Similarly, if you need to deploy to a different destination directory, you can specify it using the `REMOTE_PATH` option.
+On every run the action:
 
-You can enable cache purging with the `CACHE_CLEAR` flag and perform PHP syntax checks using the `PHP_LINT` flag. Additionally, custom commands can be executed on the server side by defining them with the `SCRIPT` option.
+1. Checks your PHP files for syntax errors, if `PHP_LINT` is on. A broken file stops the deploy before anything is uploaded.
+2. Connects to the server with your SSH key.
+3. Uploads the changed files with rsync.
+4. Runs your post-deploy `SCRIPT`, if you set one.
+5. Clears the cache, if `CACHE_CLEAR` is on.
 
+Contents:
 
-## GitHub Action workflow
+- [Quick start](#quick-start)
+- [Recipes](#recipes)
+- [Before you go live](#before-you-go-live)
+- [Inputs](#inputs)
+- [Outputs](#outputs)
+- [Host keys](#host-keys)
+- [Troubleshooting](#troubleshooting)
 
-1. **Set up your [SSH key](#setting-up-your-ssh-key) on your server:** Ensure the SSH key required for deployment is properly set up and accessible on your server.
+## Quick start
 
-1. **Create a workflow file:** In the root directory of your repository, navigate to `.github/workflows/` and create a new YML file. You can name it anything you like, such as `deploy-to-prod.yml`.
+### 1. Create an SSH key for deployments
 
-1. **Add the workflow configuration:** Copy and paste the following code into your new YML file. Be sure to replace the placeholders with the appropriate values for your deployment environment. You can also specify which branches will trigger this action by editing the **branches** section of the YML file:
+Run this on your computer. It creates `deploy_key` (private) and `deploy_key.pub` (public) with no passphrase, since GitHub can't type one.
 
-   **`> .github/workflows/deploy-to-prod.yml`**
+```bash
+ssh-keygen -t ed25519 -C "github-deploy" -f deploy_key -N ""
+```
 
-   ```yml
-   name: 📦 Production Deployment
-   on:
-      push:
-         branches:
-            - main
-            - dev
-            - 'feature/**'
-      workflow_dispatch:
-   env:
-      SERVER_TYPE: pressable # pressable or wpengine
-      SERVER_ID: pressable-username # Pressable SFTP username or WP Engine environment name
-      PROJECT_TYPE: theme # plugin or theme
-      PROJECT_NAME: theme-name # Name of the plugin or theme
-   jobs:
-      build:
-         name: 🚩 Deployment Job
-         runs-on: ubuntu-latest
-         steps:
-         - name: 🚚 Getting latest code
-           uses: actions/checkout@v4
+Use a new key just for deployments, not your personal one.
 
-         - name: 🔁 Starting Deployment
-           uses: IlanVivanco/wp-deployment-action@v1
-           with:
-               SSH_PRIVATE_KEY: ${{ secrets.MY_SSH_KEY }}
-               SERVER_ID: ${{ env.SERVER_ID }}
-               SERVER_TYPE: ${{ env.SERVER_TYPE }}
-               REMOTE_PATH: 'wp-content/${{ env.PROJECT_TYPE }}s/${{ env.PROJECT_NAME }}'
-               FLAGS: -azvrhi --inplace --delete --delete-excluded --exclude-from=.deployignore
-               SCRIPT: 'bin/post-deploy.sh'
-               PHP_LINT: TRUE
-               CACHE_CLEAR: TRUE
-   ```
+### 2. Authorize the public key on the server
 
-4. **Push changes to trigger the action:** After editing and saving the file, push the latest changes to your repository. The GitHub Action will automatically execute and handle the deployment process.
+Copy the contents of `deploy_key.pub` and add it on your host:
 
-   ![Magic](https://media.giphy.com/media/l3V0dy1zzyjbYTQQM/giphy.gif)
+| Host      | Where to add it                                                                                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pressable | MyPressable Control Panel, in the site's SFTP/SSH settings ([guide](https://pressable.com/knowledgebase/connect-to-ssh-on-pressable/#connect-to-ssh-with-an-ssh-key/)). |
+| WP Engine | User Portal, under **Profile > SSH Keys** ([guide](https://wpengine.com/support/ssh-gateway/#Add_SSH_Key)).                                                              |
+| Custom    | Your host's SSH keys panel, or append it to `~/.ssh/authorized_keys` of the SSH user.                                                                                    |
 
+Check that it works before going on: `ssh -i deploy_key USER@HOST` should log you in without asking for a password.
 
-## Setting up your SSH key
+### 3. Save the private key in GitHub
 
-1. **Generate a new SSH key pair:** Create a new SSH key pair to be used as a deploy key between your GitHub repository and Pressable/WP Engine. To keep things simple, generate a key pair with a blank passphrase, resulting in an unencrypted private key. You can do this with the following [this article](https://help.github.com/articles/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent/).
+In your repository, go to **Settings > Secrets and variables > Actions > New repository secret**. Name it `SSH_PRIVATE_KEY` and paste the whole contents of `deploy_key`, including the `-----BEGIN` and `-----END` lines. Then delete `deploy_key` from your computer, or keep it somewhere safe.
 
-1. **Add the public SSH key:** Copy the contents of the public key (the file ending in .pub) and add it to your [Pressable](https://pressable.com/knowledgebase/connect-to-ssh-on-pressable/#connect-to-ssh-with-an-ssh-key/) or [WP Engine](https://wpengine.com/support/ssh-gateway/#Add_SSH_Key) configuration panel under the SSH keys section.
+### 4. Add the workflow
 
-2. **Store the private key in GitHub:** In your GitHub repository, navigate to **`Settings > Secrets and variables > Actions`**, and create a new encrypted secret. You can name the secret whatever you like, but make sure you pass the same name when using it in the workflow.
+Create `.github/workflows/deploy.yml` in your repository and copy the example for your host. Each one deploys the repository's `theme` folder to `wp-content/themes/my-theme` on every push to `main`.
 
-3. **Reference the private key in your workflow YML file:** In your GitHub Action workflow file, configure the SSH private key by referencing the secret you created. If you named the secret `PRESSABLE_SSH_KEY`, your code should look like this: `SSH_PRIVATE_KEY: ${{ secrets.PRESSABLE_SSH_KEY }}`
+#### Pressable
 
+`SSH_USER` is the site's SSH/SFTP username, shown in MyPressable next to the SSH connection details.
 
-## Environment variables
+```yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
-This action requires or supports the following variables:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-### Required
+      - uses: IlanVivanco/wp-deployment-action@v1
+        with:
+          SERVER_TYPE: pressable
+          SSH_USER: my-site-username
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SRC_PATH: theme
+          REMOTE_PATH: wp-content/themes/my-theme
+          DRY_RUN: TRUE # Remove this line once the dry run looks right
+```
 
-| Name              | Type      | Usage                                                                                                              |
-| ----------------- | --------- | ------------------------------------------------------------------------------------------------------------------ |
-| `SSH_PRIVATE_KEY` | _secrets_ | The private SSH key. This must be stored in GitHub Secrets and authorized on Pressable or WP Engine.               |
-| `SERVER_TYPE`     | _string_  | The type of server to deploy to. Currently, only Pressable (`pressable`) and WP Engine (`wpengine`) are supported. |
-| `SERVER_ID`       | _string_  | The SSH username for Pressable deployments or the install name for WP Engine deployments.                          |
+#### WP Engine
 
-### Optional
+`SSH_USER` is the environment name, the `my-env` in `my-env.wpengine.com`: on WP Engine the SSH user is the environment itself. The action connects to `my-env@my-env.ssh.wpengine.net`.
 
-| Name          | Type     | Usage                                                                                                     |
-| ------------- | -------- | --------------------------------------------------------------------------------------------------------- |
-| `REMOTE_PATH` | _string_ | The remote path on the server where files should be deployed. Defaults to the site root directory.        |
-| `SRC_PATH`    | _string_ | Local path to the source files for deployment. Defaults to the repository root.                           |
-| `FLAGS`       | _string_ | Rsync flags to control the file synchronization behavior. Defaults to `-azvrhi --inplace --exclude='.*'`. |
-| `PHP_LINT`    | _string_ | Set to `TRUE` to enable PHP linting before deployment. Defaults to `FALSE`.                               |
-| `CACHE_CLEAR` | _string_ | Set to `TRUE` to clear cache after deployment. Defaults to `FALSE`.                                       |
-| `SCRIPT`      | _string_ | Custom script to run on the remote server after deployment.                                               |
+```yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-## Ignoring files
+      - uses: IlanVivanco/wp-deployment-action@v1
+        with:
+          SERVER_TYPE: wpengine
+          SSH_USER: my-env
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SRC_PATH: theme
+          REMOTE_PATH: wp-content/themes/my-theme
+          DRY_RUN: TRUE # Remove this line once the dry run looks right
+```
 
-If you want to exclude certain files or directories from being deployed, you can create a `.deployignore` file in your source directory. In this file, you can specify patterns of files and directories to exclude—one pattern per line. Blank lines and lines starting with `#` will be ignored.
+#### Custom (any SSH server)
 
-### Example `.deployignore` file
+A custom server needs three things that Pressable and WP Engine already know:
+
+- `SSH_HOST`: the server you connect to, e.g. `example.com`.
+- `SSH_USER`: the SSH username.
+- `BASE_PATH`: the folder where WordPress is installed, the one that contains `wp-config.php`. A leading `~` means the SSH user's home folder, e.g. `~/www` or `~/public_html`.
+
+To find `BASE_PATH`, log in with `ssh -i deploy_key USER@HOST` and look for `wp-config.php`. If `pwd` prints `/home/user` and WordPress is in `/home/user/www`, use `~/www`.
+
+```yml
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: IlanVivanco/wp-deployment-action@v1
+        with:
+          SERVER_TYPE: custom
+          SSH_HOST: example.com
+          SSH_USER: ssh-user
+          BASE_PATH: '~/www'
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SRC_PATH: theme
+          REMOTE_PATH: wp-content/themes/my-theme
+          DRY_RUN: TRUE # Remove this line once the dry run looks right
+```
+
+If your host uses a port other than 22, add `SSH_PORT`.
+
+### 5. Run it
+
+Push to `main`, or run the workflow by hand from the **Actions** tab. With `DRY_RUN: TRUE` the log lists the files that would be uploaded, and nothing changes on the server. When the list looks right, remove the `DRY_RUN` line and push again.
+
+## Recipes
+
+### Theme or plugin
+
+Point `SRC_PATH` at the folder in your repository, and `REMOTE_PATH` at the folder on the server, relative to the WordPress root:
+
+| You deploy       | `SRC_PATH`        | `REMOTE_PATH`                  |
+| ---------------- | ----------------- | ------------------------------ |
+| A theme          | `theme`           | `wp-content/themes/my-theme`   |
+| A plugin         | `plugin`          | `wp-content/plugins/my-plugin` |
+| Must-use plugins | `mu-plugins`      | `wp-content/mu-plugins`        |
+| The whole site   | `.`               | _(leave it out)_               |
+
+Use `SRC_PATH: .` when the repository itself is the theme or plugin.
+
+### Several folders to the same server
+
+Add one step per folder. Each step is a separate upload, so each can have its own flags:
+
+```yml
+      - name: Deploy theme
+        uses: IlanVivanco/wp-deployment-action@v1
+        with:
+          SERVER_TYPE: custom
+          SSH_HOST: example.com
+          SSH_USER: ssh-user
+          BASE_PATH: '~/www'
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SRC_PATH: theme
+          REMOTE_PATH: wp-content/themes/my-theme
+          FLAGS: -azvrhi --inplace --delete --exclude='.*'
+
+      - name: Deploy mu-plugins
+        uses: IlanVivanco/wp-deployment-action@v1
+        with:
+          SERVER_TYPE: custom
+          SSH_HOST: example.com
+          SSH_USER: ssh-user
+          BASE_PATH: '~/www'
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SRC_PATH: mu-plugins
+          REMOTE_PATH: wp-content/mu-plugins
+          CACHE_CLEAR: TRUE
+          CACHE_COMMAND: wp cache flush
+```
+
+The second step has no `--delete`, because `wp-content/mu-plugins` often also holds files that your host or other plugins put there. Clear the cache only in the last step.
+
+### Remove files you deleted from the repository
+
+By default the action only adds and updates files. To also remove files from the server that are no longer in `SRC_PATH`, add `--delete` to `FLAGS`. Read [Before you go live](#before-you-go-live) first.
+
+```yml
+          FLAGS: -azvrhi --inplace --delete --exclude='.*'
+```
+
+### Skip files with `.deployignore`
+
+List what should not be uploaded (build sources, `node_modules`, config files) in a `.deployignore` file, one pattern per line. Blank lines and lines starting with `#` are ignored. Patterns are relative to `SRC_PATH`.
 
 ```bash
 .*
 composer*
-dist
 node_modules
 package*
 phpcs*
@@ -109,37 +217,179 @@ src
 vendor
 ```
 
-### Configuring rsync with `.deployignore`
+Then pass it in `FLAGS`. The path to the file is relative to the **repository root**, not to `SRC_PATH`:
 
-To ensure the file is respected during deployment, you need to pass the appropriate rsync flags, including the `.deployignore` file, in your GitHub Action workflow. The default flags for rsync are `-azvrhi --inplace --exclude='.*'`.
+```yml
+          SRC_PATH: theme
+          FLAGS: -azvrhi --inplace --exclude-from=theme/.deployignore
+```
 
-When using a `.deployignore` file, make sure to include the default flags (or customize them as needed) to ensure the deployment runs smoothly. To incorporate them, you need to modify the flags like this:
-`FLAGS: -azvrhi --inplace --exclude-from=.deployignore`
+Keep the `.*` line. Your `FLAGS` replace the default ones, including the default `--exclude='.*'`, so without that line `.git` and other hidden files get uploaded.
 
-### Rsync option flags
+### Clear the cache
 
-You can read the full details [here](https://linux.die.net/man/1/rsync), but these are the most common ones:
+Set `CACHE_CLEAR: TRUE`. What runs depends on the host:
 
-| **Flag**              | **Description**                                                                                      |
-| --------------------- | ---------------------------------------------------------------------------------------------------- |
-| `-a` *archive*        | Enables archive mode, preserving symbolic links, permissions, timestamps, and other file attributes. |
-| `-z` *compress*       | Compresses file data during transfer to speed up the process over slower network connections.        |
-| `-v` *verbose*        | Enables verbose output for detailed information during execution.                                    |
-| `-r` *recursive*      | Recursively copies directories and their contents.                                                   |
-| `-i` *itemized*       | Provides a detailed list of changes made during synchronization.                                     |
-| `--inplace`           | Updates files in place, writing directly to destination files without creating temporary copies.     |
-| `--delete`            | Deletes files from the destination that no longer exist in the source.                               |
-| `--delete-excluded`   | Deletes files from the destination that are excluded by an exclusion pattern.                        |
-| `--exclude`           | Excludes specific files or directories from the sync, e.g., `--exclude='*.log'`.                     |
-| `--exclude-from`      | Specifies a file (like `.deployignore`) containing a list of patterns to exclude.                    |
-| `-h` *human-readable* | Displays file sizes and transfer statistics in human-readable formats (e.g., KB, MB, GB).            |
+| Host      | Command                                                                                          |
+| --------- | ------------------------------------------------------------------------------------------------ |
+| Pressable | `wp --skip-plugins --skip-themes cache flush`                                                    |
+| WP Engine | `wp --skip-plugins --skip-themes page-cache flush`, then `wp --skip-plugins --skip-themes cdn-cache flush` |
+| Custom    | Whatever you set in `CACHE_COMMAND`, which is required with `custom`.                            |
+
+If you set `CACHE_COMMAND` on Pressable or WP Engine, it runs instead of the default. It runs in the SSH user's shell, from their home folder, so it can be any command. For example, if the server's default `php` is not the version WordPress uses, call WP-CLI with the right one: `/usr/bin/php8.3 /usr/local/bin/wp cache flush --path=www`.
+
+### Run a script after deploying
+
+Set `SCRIPT` to the path of a script **inside `SRC_PATH`**, such as `bin/post-deploy.sh`. After the upload, the action runs it on the server with `bash`, from the SSH user's home folder. If the script fails, the step fails.
+
+```yml
+          SRC_PATH: theme
+          REMOTE_PATH: wp-content/themes/my-theme
+          SCRIPT: bin/post-deploy.sh # Runs wp-content/themes/my-theme/bin/post-deploy.sh on the server
+```
+
+### Check PHP syntax before uploading
+
+Set `PHP_LINT: TRUE`. Every `.php` file in `SRC_PATH` is checked with `php -l`, and if one fails the deploy stops before anything is uploaded. Set `PHP_VERSION` to the version your server runs: `8.3`, `8.4` (the default) or `8.5`.
+
+For older PHP versions, check in a previous step and leave `PHP_LINT` off:
+
+```yml
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - run: find theme -name '*.php' -print0 | xargs -0 -n1 php -l
+```
+
+### Use the results in later steps
+
+Give the step an `id` and read its [outputs](#outputs):
+
+```yml
+      - id: deploy
+        uses: IlanVivanco/wp-deployment-action@v1
+        with:
+          # ...
+      - run: echo "Uploaded ${{ steps.deploy.outputs.files_transferred }} files"
+```
+
+## Before you go live
+
+- **Always try a dry run first.** `DRY_RUN: TRUE` shows exactly what would be uploaded and deleted, without touching the server.
+- **Be careful with `--delete`.** It removes everything in the destination folder that is not in `SRC_PATH`. If `REMOTE_PATH` is empty, the destination is the WordPress root, so a theme repository deployed with `--delete` would wipe WordPress core, `wp-config.php` and your uploads. Only use `--delete` when `REMOTE_PATH` points to a folder your repository fully owns, like your theme. The action shows a warning when it sees `--delete` with an empty `REMOTE_PATH`.
+- **`FLAGS` replaces the default flags, it doesn't add to them.** Start from the default, `-azvrhi --inplace --exclude='.*'`, and add what you need.
+- **Deploy to production only from the branch you release from**, like `main`. Don't deploy to production from `feature/**` branches.
+- **Only put values you control in `FLAGS`, `SCRIPT` and `CACHE_COMMAND`.** They run as written on the server, so never build them from branch names, pull request titles or other text someone else can change.
+- **Pin the server's host key** with `SSH_KNOWN_HOSTS`. See [Host keys](#host-keys).
+
+## Inputs
+
+`TRUE`/`FALSE` inputs also accept `true`, `false`, `1` and `yes`.
+
+### Connection
+
+| Name              | Required      | Description                                                                                                            |
+| ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_TYPE`     | Yes           | `pressable`, `wpengine` or `custom`.                                                                                   |
+| `SSH_USER`        | Yes           | Pressable and custom: the SSH username. WP Engine: the environment name.                                               |
+| `SSH_PRIVATE_KEY` | Yes           | The private key, from a secret: `${{ secrets.SSH_PRIVATE_KEY }}`.                                                      |
+| `SSH_HOST`        | With `custom` | The server to connect to, e.g. `example.com`. Ignored on Pressable and WP Engine.                                      |
+| `BASE_PATH`       | With `custom` | The WordPress root on the server, e.g. `~/www`. Ignored on Pressable (`~/htdocs`) and WP Engine (`sites/<SSH_USER>`). |
+| `SSH_PORT`        | No            | The SSH port. Default `22`.                                                                                            |
+| `SSH_KNOWN_HOSTS` | No            | The server's host key lines, so the action refuses to connect to an impostor. See [Host keys](#host-keys).             |
+
+### What to deploy
+
+| Name          | Required | Description                                                                                                                          |
+| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `SRC_PATH`    | No       | Folder in the repository to upload. Default `.`, the whole repository.                                                               |
+| `REMOTE_PATH` | No       | Folder on the server, relative to the WordPress root, e.g. `wp-content/themes/my-theme`. Default: the WordPress root.                |
+| `FLAGS`       | No       | rsync flags. Default `-azvrhi --inplace --exclude='.*'`. Setting it replaces the default. See [rsync flags](#rsync-flags).            |
+| `DRY_RUN`     | No       | `TRUE` to only show what would change. rsync runs with `--dry-run`, and `SCRIPT` and the cache clear are skipped. Default `FALSE`.   |
+
+### Checks and after the deploy
+
+| Name            | Required                        | Description                                                                                                                  |
+| --------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `PHP_LINT`      | No                              | `TRUE` to check PHP syntax before uploading. Default `FALSE`.                                                                |
+| `PHP_VERSION`   | No                              | PHP version for `PHP_LINT`: `8.3`, `8.4` or `8.5`. Default `8.4`.                                                            |
+| `SCRIPT`        | No                              | Script inside `SRC_PATH` to run on the server after the upload, e.g. `bin/post-deploy.sh`.                                   |
+| `CACHE_CLEAR`   | No                              | `TRUE` to clear the cache after the upload. Default `FALSE`.                                                                 |
+| `CACHE_COMMAND` | With `custom` and `CACHE_CLEAR` | Command that clears the cache. On Pressable and WP Engine it runs instead of the default. See [Clear the cache](#clear-the-cache). |
+| `DEBUG`         | No                              | `TRUE` for detailed SSH logs, useful when the connection fails. Default `FALSE`.                                             |
+
+### Renamed inputs
+
+`SERVER_ID` is now `SSH_USER`. Workflows that still use `SERVER_ID` keep working and show a notice; rename it when you next edit the workflow.
+
+## Outputs
+
+| Name                | Description                                |
+| ------------------- | ------------------------------------------ |
+| `files_transferred` | Number of files uploaded.                  |
+| `files_deleted`     | Number of files deleted on the server.     |
+| `destination`       | Where the files went, as `user@host:path`. |
+
+With `DRY_RUN`, the counts are the files that would be uploaded or deleted.
+
+## Host keys
+
+The host key is how SSH knows it is talking to your real server and not an impostor.
+
+Without `SSH_KNOWN_HOSTS`, the action trusts whatever key the server presents on the first connection of each run. That is convenient, but it can't detect an impostor. To check the key, save it once:
+
+1. From a computer you trust, run `ssh-keyscan example.com` (add `-p 2222` if the port isn't 22).
+2. Copy the lines it prints into a repository variable (**Settings > Secrets and variables > Actions > Variables**), for example `SSH_KNOWN_HOSTS`.
+3. Pass it to the action: `SSH_KNOWN_HOSTS: ${{ vars.SSH_KNOWN_HOSTS }}`.
+
+From then on, the deploy fails with `Host key verification failed` if the server's key changes. If your host changed it on purpose, scan it again and update the variable.
+
+## Troubleshooting
+
+| Error in the log                                       | What to check                                                                                                                                          |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SSH_PRIVATE_KEY doesn't look like a private key`     | The secret holds the `.pub` file or only part of the key. Paste the whole `deploy_key` file, including the `-----BEGIN` and `-----END` lines. |
+| `Permission denied (publickey)`                        | The public key is not authorized for `SSH_USER` on the server, or the secret doesn't hold the matching private key. Test it with `ssh -i deploy_key USER@HOST`. |
+| `Could not connect to ...`                             | Check `SSH_HOST`, `SSH_PORT` and `SSH_USER`, and that your host doesn't block GitHub's servers. Set `DEBUG: TRUE` for details.                       |
+| `Host key verification failed`                         | The server's key doesn't match `SSH_KNOWN_HOSTS`. See [Host keys](#host-keys).                                                                         |
+| `SSH_HOST is required` or `BASE_PATH is required`      | `SERVER_TYPE` is `custom` and that input is missing.                                                                                                   |
+| `CACHE_CLEAR is enabled but there is no cache command` | With `custom`, `CACHE_CLEAR: TRUE` needs `CACHE_COMMAND`.                                                                                              |
+| `rsync: mkdir ... failed: No such file or directory`   | A parent folder of `REMOTE_PATH` doesn't exist on the server, and rsync only creates the last one. Check `BASE_PATH` and `REMOTE_PATH`.               |
+| `Post-deploy script not found`                         | `SCRIPT` must be a path inside `SRC_PATH`, and the file must be uploaded. Check that `.deployignore` doesn't skip it.                                  |
+| `PHP linting failed`                                   | The lines above show the file and the error. If the code works on the server, check `PHP_VERSION`.                                                    |
+| `SRC_PATH '...' is not a directory`                    | The folder doesn't exist in the repository, or the workflow is missing `actions/checkout` before this step.                                           |
+
+## rsync flags
+
+The most common ones. See the [rsync manual](https://linux.die.net/man/1/rsync) for the rest.
+
+| Flag                | What it does                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `-a`                | Archive mode: copies folders recursively and keeps links, permissions and timestamps.                     |
+| `-z`                | Compresses data during the transfer.                                                                       |
+| `-v`                | Verbose output.                                                                                            |
+| `-r`                | Copies folders recursively. Already included in `-a`.                                                      |
+| `-h`                | Human-readable sizes, like KB and MB.                                                                      |
+| `-i`                | Lists each changed file and what changed.                                                                  |
+| `--inplace`         | Writes directly to the files on the server instead of temporary copies.                                    |
+| `--delete`          | Deletes files on the server that are not in `SRC_PATH`. See [Before you go live](#before-you-go-live).     |
+| `--delete-excluded` | Also deletes files on the server that match an exclude pattern.                                            |
+| `--exclude`         | Skips files matching a pattern, e.g. `--exclude='*.log'`.                                                  |
+| `--exclude-from`    | Skips the patterns listed in a file, like `.deployignore`.                                                 |
+
+The action always adds `--chmod=D775,F664`, so folders end up with `775` permissions and files with `664`.
 
 ## Contributing
 
-Contributions to this action are always welcome and highly encouraged.
+Contributions are welcome. Before opening a pull request, run the tests with Docker. They build the action image, start a throwaway SSH server and deploy to it:
+
+```bash
+shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
+test/e2e.sh
+test/compat.sh # Same server result as v1, against several rsync versions
+```
 
 ## License & Attribution
 
--  Licensed as MIT &copy; [Ilán Vivanco](https://ilanvivanco.com).
-
--  This action was originally based on the work made by Alex Zuniga on [GitHub Action for WPE Site Deployments](https://github.com/wpengine/github-action-wpe-site-deploy).
+- Licensed as MIT &copy; [Ilán Vivanco](https://ilanvivanco.com).
+- Originally based on [GitHub Action for WPE Site Deployments](https://github.com/wpengine/github-action-wpe-site-deploy) by Alex Zuniga.

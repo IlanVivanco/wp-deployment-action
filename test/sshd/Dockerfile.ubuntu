@@ -1,0 +1,13 @@
+# Ubuntu variant of the test SSH server, for older rsync and OpenSSH versions.
+ARG UBUNTU=22.04
+FROM ubuntu:${UBUNTU}
+RUN apt-get update -qq \
+	&& DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends openssh-server rsync >/dev/null \
+	&& rm -rf /var/lib/apt/lists/* \
+	&& mkdir -p /run/sshd \
+	&& printf 'Port 22\nPort 2222\nPasswordAuthentication no\n' >>/etc/ssh/sshd_config \
+	&& useradd -m -s /bin/bash deploy \
+	&& printf '#!/bin/sh\necho "$*" >>"$HOME/wp.log"\n' >/usr/local/bin/wp \
+	&& chmod +x /usr/local/bin/wp
+COPY --chmod=755 entrypoint.sh /usr/local/bin/sshd-entrypoint
+CMD ["/usr/local/bin/sshd-entrypoint"]
