@@ -148,6 +148,15 @@ check "exits non-zero" '[ "$STATUS" -ne 0 ]'
 check "writes no files" '! srv "test -e ~/www/wp-content/themes/my-theme/style.php"'
 show_log_on_failure "$f"
 
+echo "PHP_VERSION picks the lint binary"
+f=$FAILED
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE -e PHP_VERSION=8.3
+check "exits 0" '[ "$STATUS" -eq 0 ]'
+check "lints with PHP 8.3" 'grep -q "Starting PHP linting with 8.3" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE -e PHP_VERSION=8.2
+check "rejects unsupported versions" '[ "$STATUS" -ne 0 ] && grep -q "PHP_VERSION .8.2. is not supported" "$WORK/out.log"'
+show_log_on_failure "$f"
+
 echo "Validation errors"
 f=$FAILED
 run_action -e SERVER_TYPE=custom -e "BASE_PATH=~/www"

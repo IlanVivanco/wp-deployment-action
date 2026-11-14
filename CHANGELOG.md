@@ -8,6 +8,7 @@
 - `SSH_PORT` input for every server type (defaults to 22).
 - `SSH_KNOWN_HOSTS` input to check the server's host key strictly.
 - `CACHE_COMMAND` input; it replaces the default cache command on Pressable and WP Engine.
+- `PHP_VERSION` input to lint with PHP 8.3, 8.4 or 8.5.
 - `DRY_RUN` input to preview the rsync changes without touching the server.
 - `DEBUG` input for verbose SSH output.
 - Outputs: `files_transferred`, `files_deleted` and `destination`.

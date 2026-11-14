@@ -46,6 +46,10 @@ inputs:
     description: "Set to 'TRUE' to enable PHP linting before deployment. Defaults to 'FALSE'."
     default: "FALSE"
     required: false
+  PHP_VERSION:
+    description: "PHP version used by PHP_LINT: '8.3', '8.4' or '8.5'. Defaults to '8.4'."
+    default: "8.4"
+    required: false
   CACHE_CLEAR:
     description: "Set to 'TRUE' to clear cache after deployment. Defaults to 'FALSE'."
     default: "FALSE"
@@ -90,6 +94,7 @@ runs:
     SRC_PATH: ${{ inputs.SRC_PATH }}
     FLAGS: ${{ inputs.FLAGS }}
     PHP_LINT: ${{ inputs.PHP_LINT }}
+    PHP_VERSION: ${{ inputs.PHP_VERSION }}
     CACHE_CLEAR: ${{ inputs.CACHE_CLEAR }}
     CACHE_COMMAND: ${{ inputs.CACHE_COMMAND }}
     SCRIPT: ${{ inputs.SCRIPT }}

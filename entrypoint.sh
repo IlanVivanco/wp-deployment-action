@@ -24,6 +24,7 @@ validate() {
 	SRC_PATH="${SRC_PATH:-"."}"
 	FLAGS="${FLAGS:-"-azvrhi --inplace --exclude='.*'"}"
 	PHP_LINT="${PHP_LINT:-"false"}"
+	PHP_VERSION="${PHP_VERSION:-"8.4"}"
 	CACHE_CLEAR="${CACHE_CLEAR:-"false"}"
 	SCRIPT="${SCRIPT:-""}"
 	SSH_PORT="${SSH_PORT:-"22"}"
@@ -32,6 +33,12 @@ validate() {
 
 	[[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || fail "SSH_PORT must be a number, got '${SSH_PORT}'."
 	[ -d "${SRC_PATH}" ] || fail "SRC_PATH '${SRC_PATH}' is not a directory."
+	if is_true "${PHP_LINT}"; then
+		case "${PHP_VERSION}" in
+		8.3 | 8.4 | 8.5) ;;
+		*) fail "PHP_VERSION '${PHP_VERSION}' is not supported for linting. Use 8.3, 8.4 or 8.5, or lint in a previous step with shivammathur/setup-php." ;;
+		esac
+	fi
 }
 
 # Set up environment variables
@@ -90,7 +97,7 @@ print_info() {
 	echo "* Source path: ${SRC_PATH}"
 	echo "* Destination path: ${SERVER_DEST}"
 	echo "* Flags: ${FLAGS_ARRAY[*]}"
-	echo "* PHP linting: ${PHP_LINT}"
+	echo "* PHP linting: ${PHP_LINT}$(is_true "${PHP_LINT}" && echo " (PHP ${PHP_VERSION})")"
 	echo "* Cache clear: ${CACHE_CLEAR}${CACHE_COMMAND:+ (${CACHE_COMMAND})}"
 	echo "* Post-deploy script: ${SCRIPT}"
 	echo "* Host key check: $([ -n "${SSH_KNOWN_HOSTS}" ] && echo "strict (SSH_KNOWN_HOSTS)" || echo "trust on first use")"
@@ -114,11 +121,18 @@ check_lint() {
 		return
 	fi
 
-	echo "Starting PHP linting with $(php -r 'echo PHP_VERSION;')..."
+	# PHP 8.4 ships in the image; other versions are installed on demand
+	local php_bin="php${PHP_VERSION//./}"
+	if ! command -v "${php_bin}" >/dev/null; then
+		echo "Installing PHP ${PHP_VERSION}..."
+		apk add --no-cache --quiet "${php_bin}" || fail "Could not install PHP ${PHP_VERSION}."
+	fi
+
+	echo "Starting PHP linting with $("${php_bin}" -r 'echo PHP_VERSION;')..."
 	local failed=0 count=0 file output
 	while IFS= read -r -d '' file; do
 		count=$((count + 1))
-		if ! output=$(php -l "$file" 2>&1); then
+		if ! output=$("${php_bin}" -l "$file" 2>&1); then
 			echo "$output"
 			echo "::error file=${file}::PHP linting failed"
 			failed=1

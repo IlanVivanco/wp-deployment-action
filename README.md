@@ -126,7 +126,8 @@ This action requires or supports the following variables:
 | `REMOTE_PATH`     | _string_ | The remote path, relative to the site root, where files should be deployed. Defaults to the site root directory.                                 |
 | `SRC_PATH`        | _string_ | Local path to the source files for deployment. Defaults to the repository root.                                                                  |
 | `FLAGS`           | _string_ | Rsync flags to control the file synchronization behavior. Defaults to `-azvrhi --inplace --exclude='.*'`.                                        |
-| `PHP_LINT`        | _string_ | Set to `TRUE` to enable PHP linting before deployment. Defaults to `FALSE`. Linting uses PHP 8.4, which may differ from the server's version.   |
+| `PHP_LINT`        | _string_ | Set to `TRUE` to enable PHP linting before deployment. Defaults to `FALSE`.                                                                      |
+| `PHP_VERSION`     | _string_ | PHP version used by `PHP_LINT`: `8.3`, `8.4` or `8.5`. Defaults to `8.4`. See [PHP linting](#php-linting).                                       |
 | `CACHE_CLEAR`     | _string_ | Set to `TRUE` to clear cache after deployment. Defaults to `FALSE`.                                                                              |
 | `CACHE_COMMAND`   | _string_ | Command that clears the cache when `CACHE_CLEAR` is `TRUE`. Required for `custom`; replaces the Pressable and WP Engine defaults.                |
 | `SCRIPT`          | _string_ | Path to a script, relative to the deployed directory, to run on the remote server after deployment. It runs with `bash` from the SSH user's home. |
@@ -136,6 +137,19 @@ This action requires or supports the following variables:
 The default cache commands are `wp cache flush` on Pressable, and `wp page-cache flush` plus `wp cdn-cache flush` on WP Engine.
 
 `FLAGS`, `SCRIPT` and `CACHE_COMMAND` are passed to rsync and the server's shell as written, so only set them from trusted values, never from pull request titles, branch names or other user input.
+
+## PHP linting
+
+With `PHP_LINT: TRUE`, every `.php` file in `SRC_PATH` is checked with `php -l` before anything is uploaded, and the deploy stops if one fails. Set `PHP_VERSION` to the version your server runs so the check matches it. PHP 8.4 is built into the action; 8.3 and 8.5 are installed when the step runs, which adds a few seconds.
+
+For an older PHP version, lint in a previous step and leave `PHP_LINT` off:
+
+```yml
+- uses: shivammathur/setup-php@v2
+  with:
+    php-version: '8.2'
+- run: find theme -name '*.php' -print0 | xargs -0 -n1 php -l
+```
 
 ## Outputs
 
