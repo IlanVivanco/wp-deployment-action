@@ -103,7 +103,7 @@ run_with() {
 	set -e
 	{
 		[ "$status" -eq 0 ] && echo "result: success" || echo "result: failure"
-		srv 'cd ~ && find htdocs sites -printf "%p %y %m %s\n" 2>/dev/null | sort'
+		srv 'cd ~ && find htdocs sites -printf "%p %y %m %s\n" | sort'
 		echo "wp:"
 		srv 'cat ~/wp.log 2>/dev/null || true'
 		echo "script:"
