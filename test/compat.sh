@@ -2,14 +2,14 @@
 # Assertions are eval-ed strings, so single quotes are intended
 # shellcheck disable=SC2016
 # Backward compatibility test: deploys the same fixtures with the image built
-# from a released ref (v1 by default) and with the working tree, against SSH
+# from a released ref (v1.0.0, the first release, by default) and with the working tree, against SSH
 # servers with different rsync versions, and checks that both leave the server
 # in the same state.
 # Usage: test/compat.sh [ref] (needs Docker). KEEP=1 keeps the temp files.
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-REF="${1:-v1}"
+REF="${1:-v1.0.0}"
 WORK="$(mktemp -d)"
 NET="wpda-compat-$$"
 SRV="wpda-compat-srv-$$"
