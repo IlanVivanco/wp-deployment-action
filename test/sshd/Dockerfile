@@ -1,6 +1,6 @@
 # SSH server used by test/e2e.sh. Listens on 22 and 2222 and fakes WP-CLI.
 FROM alpine:3.23
-RUN apk add --no-cache bash openssh rsync \
+RUN apk add --no-cache bash findutils openssh rsync \
 	&& ssh-keygen -A \
 	&& printf 'Port 22\nPort 2222\nPasswordAuthentication no\n' >>/etc/ssh/sshd_config \
 	&& adduser -D -s /bin/bash deploy \
