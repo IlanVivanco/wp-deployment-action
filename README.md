@@ -147,6 +147,8 @@ If your host uses a port other than 22, add `SSH_PORT`.
 
 Push to `main`, or run the workflow by hand from the **Actions** tab. With `DRY_RUN: TRUE` the log lists the files that would be uploaded, and nothing changes on the server. When the list looks right, remove the `DRY_RUN` line and push again.
 
+`@v1` always gets the latest 1.x release, with fixes and no breaking changes. To stay on an exact release, use the full version, e.g. `@v1.2.0`.
+
 ## Recipes
 
 ### Theme or plugin
@@ -350,7 +352,7 @@ From then on, the deploy fails with `Host key verification failed` if the server
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `SSH_PRIVATE_KEY doesn't look like a private key`     | The secret holds the `.pub` file or only part of the key. Paste the whole `deploy_key` file, including the `-----BEGIN` and `-----END` lines. |
 | `Permission denied (publickey)`                        | The public key is not authorized for `SSH_USER` on the server, or the secret doesn't hold the matching private key. Test it with `ssh -i deploy_key USER@HOST`. |
-| `Could not connect to ...`                             | Check `SSH_HOST`, `SSH_PORT` and `SSH_USER`, and that your host doesn't block GitHub's servers. Set `DEBUG: TRUE` for details.                       |
+| `Could not connect to ...`                             | Check `SSH_HOST`, `SSH_PORT` and `SSH_USER` against your hosting panel; hosts can change them when they move a site. `Operation timed out` (after 60 seconds) means nothing answered on that host and port, or a firewall blocks GitHub's servers. Set `DEBUG: TRUE` for details. |
 | `Host key verification failed`                         | The server's key doesn't match `SSH_KNOWN_HOSTS`. See [Host keys](#host-keys).                                                                         |
 | `SSH_HOST is required` or `BASE_PATH is required`      | `SERVER_TYPE` is `custom` and that input is missing.                                                                                                   |
 | `CACHE_CLEAR is enabled but there is no cache command` | With `custom`, `CACHE_CLEAR: TRUE` needs `CACHE_COMMAND`.                                                                                              |
@@ -388,6 +390,18 @@ shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
 test/e2e.sh
 test/compat.sh # Same server result as v1.0.0, against several rsync versions
 ```
+
+### Releasing
+
+Releases are published by the **Release** workflow. It tests the image, pushes it to GHCR, and only then creates the tags, so a tag never points to an image that doesn't exist.
+
+1. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md` and merge it to `main`.
+2. Go to **Actions > Release > Run workflow**, on `main`, and enter the version, e.g. `1.2.0`.
+3. The workflow creates `vX.Y.Z`, moves `vX` and `vX.Y` to it, and publishes the GitHub release with the changelog section.
+
+The first time, the image is created as a private package and the workflow stops at "Check that anyone can pull the image". Set the package to public in **Your profile > Packages > wp-deployment-action > Package settings** and run the workflow again.
+
+The tagged commit is `main` plus one change: `action.yml` uses the published image instead of the `Dockerfile`. `main` keeps building the `Dockerfile`, so `uses: IlanVivanco/wp-deployment-action@main` and the tests always run the current code.
 
 ## License & Attribution
 

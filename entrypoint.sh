@@ -187,6 +187,7 @@ setup_ssh() {
 		-o UserKnownHostsFile="${KNOWN_HOSTS_PATH}"
 		-o StrictHostKeyChecking="${HOST_KEY_CHECKING}"
 		-o ControlPath="${SSH_PATH}/ctl-%C"
+		-o ConnectTimeout=60
 		-o ServerAliveInterval=30
 	)
 	if is_true "${DEBUG}"; then
@@ -194,7 +195,7 @@ setup_ssh() {
 	fi
 
 	# Create multiplex connection
-	ssh -nNf "${SSH_OPTS[@]}" -o ControlMaster=yes "${SSH_REMOTE}" || fail "Could not connect to ${SSH_REMOTE} on port ${SSH_PORT}."
+	ssh -nNf "${SSH_OPTS[@]}" -o ControlMaster=yes "${SSH_REMOTE}" || fail "Could not connect to ${SSH_REMOTE} on port ${SSH_PORT}. If the log says 'timed out', the host or port is wrong or a firewall blocks GitHub; check them in your hosting panel."
 	echo "Multiplex SSH connection established."
 }
 

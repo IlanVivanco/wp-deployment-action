@@ -1,0 +1,110 @@
+# Publishes a release. Run it by hand from the Actions tab, on main, with the
+# version to release. It tests and pushes the image to GHCR first, and only then
+# creates the vX.Y.Z tag and moves vX and vX.Y to it, so a tag never points to
+# an image that doesn't exist.
+#
+# The tagged commit is main plus one change: action.yml uses the published image
+# instead of building the Dockerfile. That commit is not pushed to main.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 1.2.0. CHANGELOG.md needs a '## v1.2.0' section."
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency: release
+
+jobs:
+  release:
+    name: Release v${{ inputs.version }}
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the version
+        run: |
+          [ "${GITHUB_REF}" = refs/heads/main ] || { echo "::error::Run the release from main."; exit 1; }
+          [[ "${VERSION}" =~ ^([1-9][0-9]*)\.([0-9]+)\.([0-9]+)$ ]] || { echo "::error::Use MAJOR.MINOR.PATCH, e.g. 1.2.0."; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "::error::v${VERSION} already exists."; exit 1
+          fi
+          grep -qx "## v${VERSION}" CHANGELOG.md || { echo "::error::CHANGELOG.md has no '## v${VERSION}' section."; exit 1; }
+          {
+            echo "MAJOR=${BASH_REMATCH[1]}"
+            echo "MINOR=${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+            echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}"
+          } >>"${GITHUB_ENV}"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the image for the tests
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: wpda-release-test
+
+      - name: Test the image
+        run: |
+          shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
+          TEST_IMAGE=wpda-release-test test/e2e.sh
+          # Same server result as the previous release of this major version
+          if git rev-parse -q --verify "refs/tags/v${MAJOR}" >/dev/null; then
+            TEST_IMAGE=wpda-release-test test/compat.sh "v${MAJOR}"
+          fi
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Check that anyone can pull the image
+        run: |
+          docker logout ghcr.io
+          if ! docker manifest inspect "${IMAGE}:${VERSION}" >/dev/null; then
+            echo "::error::${IMAGE}:${VERSION} is not public, so workflows that use the action can't pull it. In the package settings (Your profile > Packages > wp-deployment-action > Package settings), set the visibility to Public, then run this release again."
+            exit 1
+          fi
+
+      - name: Tag the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          sed -i "s|^  image: \"Dockerfile\"$|  image: \"docker://${IMAGE}:${VERSION}\"|" action.yml
+          grep -q "image: \"docker://${IMAGE}:${VERSION}\"" action.yml || { echo "::error::Could not point action.yml to the image."; exit 1; }
+          git commit -q -am "🔖 Release v${VERSION}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git tag -fa "v${MINOR}" -m "Update to v${VERSION}"
+          git tag -fa "v${MAJOR}" -m "Update to v${VERSION}"
+          git push origin "v${VERSION}"
+          git push --force origin "v${MINOR}" "v${MAJOR}"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          awk -v head="## v${VERSION}" '$0 == head { found = 1; next } found && /^## / { exit } found' CHANGELOG.md >notes.md
+          gh release create "v${VERSION}" --title "v${VERSION}" --notes-file notes.md --verify-tag

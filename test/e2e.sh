@@ -3,13 +3,14 @@
 # shellcheck disable=SC2016,SC2034
 # End-to-end tests: runs the action image against a throwaway SSH server.
 # Usage: test/e2e.sh (needs Docker). KEEP=1 leaves the server and temp files for debugging.
+# TEST_IMAGE=<image> tests an image that is already built instead of the working tree.
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="$(mktemp -d)"
 NET="wpda-e2e-$$"
 SRV="wpda-e2e-srv-$$"
-ACTION_IMAGE="wpda-e2e-action"
+ACTION_IMAGE="${TEST_IMAGE:-wpda-e2e-action}"
 SERVER_IMAGE="wpda-e2e-sshd"
 PASSED=0
 FAILED=0
@@ -47,7 +48,7 @@ run_action() {
 show_log_on_failure() { [ "$FAILED" -eq "$1" ] || sed 's/^/      | /' "$WORK/out.log"; }
 
 echo "Building images..."
-docker build -q -t "$ACTION_IMAGE" "$ROOT" >/dev/null
+[ -n "$TEST_IMAGE" ] || docker build -q -t "$ACTION_IMAGE" "$ROOT" >/dev/null
 docker build -q -t "$SERVER_IMAGE" "$ROOT/test/sshd" >/dev/null
 
 ssh-keygen -q -t ed25519 -N '' -f "$WORK/key"
