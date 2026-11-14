@@ -386,7 +386,7 @@ Contributions are welcome. Before opening a pull request, run the tests with Doc
 ```bash
 shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
 test/e2e.sh
-test/compat.sh # Same server result as v1, against several rsync versions
+test/compat.sh # Same server result as v1.0.0, against several rsync versions
 ```
 
 ## License & Attribution
