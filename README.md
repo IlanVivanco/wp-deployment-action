@@ -301,6 +301,17 @@ These apply on every deploy and can't be turned off with `FLAGS` or `.deployigno
 
 Only the paths inside `REMOTE_PATH` apply. A deploy to `wp-content/themes/my-theme` doesn't touch any of them anyway, while a deploy to the WordPress root or to `wp-content` keeps them all. When `REMOTE_PATH` is one of these folders, like `wp-content/mu-plugins`, you are deploying into it on purpose, so it isn't protected: don't use `--delete` there.
 
+To protect more paths, list them in `PROTECT`, relative to the WordPress root. A trailing `/` protects a folder and everything in it:
+
+```yml
+          PROTECT: |
+            wp-content/languages/
+            wp-content/wflogs/
+            robots.txt
+```
+
+`PROTECT` adds to the built-in list; the built-in paths can't be removed.
+
 The deploy log lists both, under "Never uploaded" and "Never deleted on the server".
 
 ## Inputs
@@ -326,6 +337,7 @@ The deploy log lists both, under "Never uploaded" and "Never deleted on the serv
 | `SRC_PATH`    | No       | Folder in the repository to upload. Default `.`, the whole repository.                                                               |
 | `REMOTE_PATH` | No       | Folder on the server, relative to the WordPress root, e.g. `wp-content/themes/my-theme`. Default: the WordPress root.                |
 | `FLAGS`       | No       | rsync flags. Default `-azvrhi --inplace --exclude='.*'`. Setting it replaces the default. See [rsync flags](#rsync-flags).            |
+| `PROTECT`     | No       | More server paths that are never deleted, relative to the WordPress root. See [Built-in safety rules](#built-in-safety-rules).      |
 | `DRY_RUN`     | No       | `TRUE` to only show what would change. rsync runs with `--dry-run`, and `SCRIPT` and the cache clear are skipped. Default `FALSE`.   |
 
 ### After the deploy
@@ -339,7 +351,7 @@ The deploy log lists both, under "Never uploaded" and "Never deleted on the serv
 
 ### Removed inputs
 
-`SERVER_ID`, `PHP_LINT` and `PHP_VERSION` were removed in v2. See [Upgrading from v1](#upgrading-from-v1).
+`SERVER_ID`, `PHP_LINT` and `PHP_VERSION` were removed in v2. `SERVER_ID` fails with a message to rename it to `SSH_USER`; `PHP_LINT` and `PHP_VERSION` are ignored with a warning. See [Upgrading from v1](#upgrading-from-v1).
 
 ## Outputs
 
@@ -376,6 +388,7 @@ From then on, the deploy fails with `Host key verification failed` if the server
 | `rsync: mkdir ... failed: No such file or directory`   | A parent folder of `REMOTE_PATH` doesn't exist on the server, and rsync only creates the last one. Check `BASE_PATH` and `REMOTE_PATH`.               |
 | `Post-deploy script not found`                         | `SCRIPT` must be a path inside `SRC_PATH`, and the file must be uploaded. Check that `.deployignore` doesn't skip it.                                  |
 | `SERVER_ID was renamed to SSH_USER` or `PHP_LINT was removed` | The workflow was written for v1. See [Upgrading from v1](#upgrading-from-v1).                                                                   |
+| `PROTECT paths can't contain '..'`                     | `PROTECT` paths are relative to the WordPress root and must stay inside it.                                                                          |
 | `SRC_PATH '...' is not a directory`                    | The folder doesn't exist in the repository, or the workflow is missing `actions/checkout` before this step.                                           |
 
 ## rsync flags
@@ -402,7 +415,7 @@ The action always adds `--chmod=D775,F664`, so folders end up with `775` permiss
 
 1. Change `@v1` to `@v2`.
 2. Rename `SERVER_ID:` to `SSH_USER:`.
-3. If you had `PHP_LINT: TRUE`, remove `PHP_LINT` and `PHP_VERSION` and add the lint step from [Check PHP syntax before uploading](#check-php-syntax-before-uploading) before the deploy step.
+3. If you had `PHP_LINT: TRUE`, remove `PHP_LINT` and `PHP_VERSION`. v2 ignores them with a warning, so your PHP files are no longer checked. To keep checking them, add the step from [Check PHP syntax before uploading](#check-php-syntax-before-uploading) before the deploy step.
 4. Run once with `DRY_RUN: TRUE` and read the log. Files that v1 uploaded and v2 doesn't, like `.git` or `.github` when your `FLAGS` didn't exclude them, show as deleted on the server if you use `--delete-excluded`. That cleanup is expected.
 
 v1 keeps working and gets security fixes on the `releases/v1` branch.

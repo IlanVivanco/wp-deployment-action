@@ -207,10 +207,23 @@ check "keeps uploads and cache, even excluded" 'srv "test -f ~/root/wp-content/u
 check "applies only the rules inside REMOTE_PATH" '! grep -q "Never deleted on the server: wp-config.php" "$WORK/out.log" && grep -q "Never deleted on the server: wp-content/uploads/" "$WORK/out.log"'
 show_log_on_failure "$f"
 
+echo "Safety rules: PROTECT adds paths, relative to REMOTE_PATH"
+f=$FAILED
+srv 'mkdir -p ~/root/wp-content/languages/es ~/root/wp-content/plugins/keep && touch ~/root/wp-content/languages/es/es.mo ~/root/wp-content/plugins/keep/k.php ~/root/wp-content/notes.txt'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/root" \
+	-e SRC_PATH=site/wp-content -e REMOTE_PATH=wp-content -e "FLAGS=-azvri --delete" \
+	-e "PROTECT=$(printf '%s\n' 'wp-content/languages/' '/wp-content/plugins/keep/   wp-content/*.txt' 'robots.txt')"
+check "exits 0" '[ "$STATUS" -eq 0 ]'
+check "keeps the folders and patterns in PROTECT" 'srv "test -f ~/root/wp-content/languages/es/es.mo && test -f ~/root/wp-content/plugins/keep/k.php && test -f ~/root/wp-content/notes.txt"'
+check "skips PROTECT paths outside REMOTE_PATH" '! grep -q "Never deleted on the server:.*robots.txt" "$WORK/out.log"'
+run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e "BASE_PATH=~/root" -e SRC_PATH=site -e "PROTECT=wp-content/../../etc"
+check "rejects .. in PROTECT" '[ "$STATUS" -ne 0 ] && grep -q "PROTECT paths can.t contain" "$WORK/out.log"'
+show_log_on_failure "$f"
+
 echo "Removed v1 inputs"
 f=$FAILED
-run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE
-check "PHP_LINT fails with the way to migrate" '[ "$STATUS" -ne 0 ] && grep -q "PHP_LINT was removed in v2" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE -e PHP_VERSION=8.3 -e DRY_RUN=TRUE
+check "PHP_LINT only warns, once" '[ "$STATUS" -eq 0 ] && grep -q "::warning::PHP_LINT was removed in v2" "$WORK/out.log" && ! grep -q "PHP_VERSION was removed" "$WORK/out.log"'
 run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e SSH_USER= -e SERVER_ID=deploy
 check "SERVER_ID fails with the new name" '[ "$STATUS" -ne 0 ] && grep -q "SERVER_ID was renamed to SSH_USER" "$WORK/out.log"'
 run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=FALSE -e PHP_VERSION=8.3 -e DRY_RUN=TRUE

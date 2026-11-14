@@ -22,7 +22,7 @@ validate() {
 	# Inputs removed in v2 fail with the way to migrate, instead of being ignored
 	[ -z "${SERVER_ID}" ] || fail "SERVER_ID was renamed to SSH_USER in v2. Replace 'SERVER_ID:' with 'SSH_USER:' in your workflow."
 	if is_true "${PHP_LINT}"; then
-		fail "PHP_LINT was removed in v2. Lint in a step before the deploy; the README has the snippet (Upgrading from v1)."
+		echo "::warning::PHP_LINT was removed in v2 and is ignored, so PHP files are not checked. Add a lint step before the deploy; the README has the snippet (Upgrading from v1)."
 	fi
 	[ -n "${SSH_USER}" ] || fail "SSH_USER is missing. Pressable and custom: the SSH username. WP Engine: the environment name."
 	REMOTE_PATH="${REMOTE_PATH:-""}"
@@ -31,13 +31,20 @@ validate() {
 	CACHE_CLEAR="${CACHE_CLEAR:-"false"}"
 	SCRIPT="${SCRIPT:-""}"
 	SSH_PORT="${SSH_PORT:-"22"}"
+	PROTECT="${PROTECT:-""}"
 	DRY_RUN="${DRY_RUN:-"false"}"
 	DEBUG="${DEBUG:-"false"}"
 
 	[[ "${SSH_PRIVATE_KEY}" == *"PRIVATE KEY-----"* ]] || fail "SSH_PRIVATE_KEY doesn't look like a private key. Paste the whole private key file, including the -----BEGIN and -----END lines, not the .pub file."
 	[[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || fail "SSH_PORT must be a number, got '${SSH_PORT}'."
 	[ -d "${SRC_PATH}" ] || fail "SRC_PATH '${SRC_PATH}' is not a directory."
-	[ -z "${PHP_VERSION}" ] || echo "::warning::PHP_VERSION was removed in v2 with PHP_LINT and is ignored."
+	[ -z "${PHP_VERSION}" ] || is_true "${PHP_LINT}" || echo "::warning::PHP_VERSION was removed in v2 with PHP_LINT and is ignored."
+	local path extra=()
+	# Split on spaces and new lines, without expanding * against local files
+	read -r -d '' -a extra <<<"${PROTECT}" || true
+	for path in "${extra[@]}"; do
+		[[ "/${path}/" != */../* ]] || fail "PROTECT paths can't contain '..', got '${path}'."
+	done
 }
 
 # Set up environment variables
@@ -128,7 +135,11 @@ safety_rules() {
 	SAFETY_RULES=()
 	PROTECTED_HERE=()
 	for rule in "${NEVER_UPLOAD[@]}"; do SAFETY_RULES+=("--filter=- ${rule}"); done
-	for path in "${PROTECTED[@]}"; do
+	# PROTECT adds paths to the defaults
+	local extra=()
+	read -r -d '' -a extra <<<"${PROTECT}" || true
+	for path in "${PROTECTED[@]}" "${extra[@]}"; do
+		path="${path#/}"
 		if [ -z "${remote}" ]; then
 			rule="/${path}"
 		elif [[ "${path}" == "${remote}/"?* ]]; then

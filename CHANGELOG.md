@@ -4,13 +4,14 @@
 
 ### Breaking changes
 
-- `PHP_LINT` and `PHP_VERSION` are removed. Lint in a step before the deploy with the PHP version of your server; see "Upgrading from v1" in the README. `PHP_LINT: TRUE` fails with that message, so a deploy never skips the lint silently.
+- `PHP_LINT` and `PHP_VERSION` are removed. They are ignored with a warning, so PHP files are no longer checked. Lint in a step before the deploy with the PHP version of your server; see "Upgrading from v1" in the README.
 - `SERVER_ID` is removed. Use `SSH_USER`. Setting `SERVER_ID` fails with that message.
 - `.git/`, `.github/`, `.gitignore`, `.gitattributes`, `.deployignore`, `.env`, `.env.*` and `.DS_Store` are never uploaded, whatever `FLAGS` and `.deployignore` say. In v1 they were only skipped by the default `FLAGS`, so a custom `FLAGS` uploaded the repository's `.git` folder.
 
 ### Added
 
 - Server files that the host or WordPress manage are never deleted, even with `--delete` or `--delete-excluded`: `wp-config.php`, `.htaccess`, `.user.ini`, `wp-content/uploads/`, `cache/`, `upgrade/`, `mu-plugins/`, `advanced-cache.php`, `object-cache.php` and `db.php`. Only the ones inside `REMOTE_PATH` apply.
+- `PROTECT` input to add more server paths that are never deleted.
 - The release workflow runs from `releases/vX` branches too, to publish fixes for an older major version.
 
 ### Changed

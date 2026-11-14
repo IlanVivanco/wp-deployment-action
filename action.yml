@@ -50,6 +50,10 @@ inputs:
     description: "rsync flags. Setting them replaces the default. Add --delete to remove server files that are not in SRC_PATH. Whatever the flags, .git, .github and .env files are never uploaded, and wp-config.php, uploads, cache and mu-plugins are never deleted."
     default: "-azvrhi --inplace --exclude='.*'"
     required: false
+  PROTECT:
+    description: "More server paths that are never deleted, relative to the WordPress root, one per line or separated by spaces. A trailing / protects a folder and everything in it, e.g. 'wp-content/languages/'. Adds to the built-in list (wp-config.php, uploads, cache, mu-plugins...)."
+    default: ""
+    required: false
   DRY_RUN:
     description: "Set to 'TRUE' to only show what would change: nothing is uploaded or deleted, and SCRIPT and the cache clear are skipped. Defaults to 'FALSE'."
     default: "FALSE"
@@ -57,7 +61,7 @@ inputs:
 
   # After the deploy
   PHP_LINT:
-    description: "Removed in v2: lint in a step before the deploy (see the README). Setting it to 'TRUE' fails with that message."
+    description: "Removed in v2 and ignored, with a warning. Lint in a step before the deploy (see the README)."
     default: ""
     required: false
   PHP_VERSION:
@@ -104,6 +108,7 @@ runs:
     SRC_PATH: ${{ inputs.SRC_PATH }}
     REMOTE_PATH: ${{ inputs.REMOTE_PATH }}
     FLAGS: ${{ inputs.FLAGS }}
+    PROTECT: ${{ inputs.PROTECT }}
     DRY_RUN: ${{ inputs.DRY_RUN }}
     PHP_LINT: ${{ inputs.PHP_LINT }}
     PHP_VERSION: ${{ inputs.PHP_VERSION }}
