@@ -4,10 +4,11 @@ Deploy a theme, plugin or whole site from GitHub to a [WordPress](https://wordpr
 
 On every run the action:
 
-1. Connects to the server with your SSH key.
-2. Uploads the changed files with rsync. It never uploads `.git`, `.github` or `.env` files, and never deletes `wp-config.php`, uploads or the host's files on the server. See [Built-in safety rules](#built-in-safety-rules).
-3. Runs your post-deploy `SCRIPT`, if you set one.
-4. Clears the cache, if `CACHE_CLEAR` is on.
+1. Checks your PHP files for syntax errors, if `PHP_LINT` is on. A broken file stops the deploy before anything is uploaded.
+2. Connects to the server with your SSH key.
+3. Uploads the changed files with rsync. It never uploads `.git`, `.github` or `.env` files, and never deletes `wp-config.php`, uploads or the host's files on the server. See [Built-in safety rules](#built-in-safety-rules).
+4. Runs your post-deploy `SCRIPT`, if you set one.
+5. Clears the cache, if `CACHE_CLEAR` is on.
 
 Contents:
 
@@ -253,17 +254,16 @@ Set `SCRIPT` to the path of a script **inside `SRC_PATH`**, such as `bin/post-de
 
 ### Check PHP syntax before uploading
 
-Add a step before the deploy, with the PHP version your server runs. If a file has a syntax error, the step fails and the deploy doesn't run.
+Set `PHP_LINT: TRUE`. Every `.php` file in `SRC_PATH` is checked with `php -l`, and if one fails the deploy stops before anything is uploaded. Set `PHP_VERSION` to the version your server runs: `8.3`, `8.4` (the default) or `8.5`.
+
+For older PHP versions, check in a previous step and leave `PHP_LINT` off:
 
 ```yml
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3' # The PHP version of your server
-      - name: Check PHP syntax
-        run: find theme -name '*.php' -not -path '*/vendor/*' -not -path '*/node_modules/*' -print0 | xargs -0 -n1 -P4 php -l
+          php-version: '8.2'
+      - run: find theme -name '*.php' -print0 | xargs -0 -n1 php -l
 ```
-
-Replace `theme` with your `SRC_PATH`, or `.` for the whole repository.
 
 ### Use the results in later steps
 
@@ -342,10 +342,12 @@ The deploy log lists both, under "Never uploaded" and "Never deleted on the serv
 | `PROTECT`     | No       | More server paths that are never deleted, one per line, relative to the WordPress root. See [Built-in safety rules](#built-in-safety-rules). |
 | `DRY_RUN`     | No       | `TRUE` to only show what would change. rsync runs with `--dry-run`, and `SCRIPT` and the cache clear are skipped. Default `FALSE`.   |
 
-### After the deploy
+### Checks and after the deploy
 
 | Name            | Required                        | Description                                                                                                                  |
 | --------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `PHP_LINT`      | No                              | `TRUE` to check PHP syntax before uploading. Default `FALSE`.                                                                |
+| `PHP_VERSION`   | No                              | PHP version for `PHP_LINT`: `8.3`, `8.4` or `8.5`. Default `8.4`.                                                            |
 | `SCRIPT`        | No                              | Script inside `SRC_PATH` to run on the server after the upload, e.g. `bin/post-deploy.sh`.                                   |
 | `CACHE_CLEAR`   | No                              | `TRUE` to clear the cache after the upload. Default `FALSE`.                                                                 |
 | `CACHE_COMMAND` | With `custom` and `CACHE_CLEAR` | Command that clears the cache. On Pressable and WP Engine it runs instead of the default. See [Clear the cache](#clear-the-cache). |
@@ -353,7 +355,7 @@ The deploy log lists both, under "Never uploaded" and "Never deleted on the serv
 
 ### Removed inputs
 
-`SERVER_ID`, `PHP_LINT` and `PHP_VERSION` were removed in v2. `SERVER_ID` fails with a message to rename it to `SSH_USER`; `PHP_LINT` and `PHP_VERSION` are ignored with a warning. See [Upgrading from v1](#upgrading-from-v1).
+`SERVER_ID` was removed in v2. It fails with a message to rename it to `SSH_USER`. See [Upgrading from v1](#upgrading-from-v1).
 
 ## Outputs
 
@@ -389,7 +391,8 @@ From then on, the deploy fails with `Host key verification failed` if the server
 | `CACHE_CLEAR is enabled but there is no cache command` | With `custom`, `CACHE_CLEAR: TRUE` needs `CACHE_COMMAND`.                                                                                              |
 | `rsync: mkdir ... failed: No such file or directory`   | A parent folder of `REMOTE_PATH` doesn't exist on the server, and rsync only creates the last one. Check `BASE_PATH` and `REMOTE_PATH`.               |
 | `Post-deploy script not found`                         | `SCRIPT` must be a path inside `SRC_PATH`, and the file must be uploaded. Check that `.deployignore` doesn't skip it.                                  |
-| `SERVER_ID was renamed to SSH_USER` or `PHP_LINT was removed` | The workflow was written for v1. See [Upgrading from v1](#upgrading-from-v1).                                                                   |
+| `PHP linting failed`                                   | The lines above show the file and the error. If the code works on the server, check `PHP_VERSION`.                                                    |
+| `SERVER_ID was renamed to SSH_USER`                    | The workflow was written for v1. See [Upgrading from v1](#upgrading-from-v1).                                                                          |
 | `PROTECT paths can't contain '..'`                     | `PROTECT` paths are relative to the WordPress root and must stay inside it.                                                                          |
 | `... would remove the built-in safety rules`           | `FLAGS` or `.deployignore` has a `!` or `clear` line, or uses per-folder filter files. Remove it; see [Built-in safety rules](#built-in-safety-rules). |
 | `SRC_PATH '...' is not a directory`                    | The folder doesn't exist in the repository, or the workflow is missing `actions/checkout` before this step.                                           |
@@ -418,8 +421,7 @@ The action always adds `--chmod=D775,F664`, so folders end up with `775` permiss
 
 1. Change `@v1` to `@v2`.
 2. Rename `SERVER_ID:` to `SSH_USER:`.
-3. If you had `PHP_LINT: TRUE`, remove `PHP_LINT` and `PHP_VERSION`. v2 ignores them with a warning, so your PHP files are no longer checked. To keep checking them, add the step from [Check PHP syntax before uploading](#check-php-syntax-before-uploading) before the deploy step.
-4. Run once with `DRY_RUN: TRUE` and read the log. Files that v1 uploaded and v2 doesn't, like `.git` or `.github` when your `FLAGS` didn't exclude them, show as deleted on the server if you use `--delete-excluded`. That cleanup is expected.
+3. Run once with `DRY_RUN: TRUE` and read the log. Files that v1 uploaded and v2 doesn't, like `.git` or `.github` when your `FLAGS` didn't exclude them, show as deleted on the server if you use `--delete-excluded`. That cleanup is expected.
 
 v1 keeps working and gets security fixes on the `releases/v1` branch.
 

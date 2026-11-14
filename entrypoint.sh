@@ -21,9 +21,6 @@ validate() {
 	[ -n "${SSH_PRIVATE_KEY}" ] || fail "SSH_PRIVATE_KEY variable missing from environment variables."
 	# Inputs removed in v2 fail with the way to migrate, instead of being ignored
 	[ -z "${SERVER_ID}" ] || fail "SERVER_ID was renamed to SSH_USER in v2. Replace 'SERVER_ID:' with 'SSH_USER:' in your workflow."
-	if is_true "${PHP_LINT}"; then
-		echo "::warning::PHP_LINT was removed in v2 and is ignored, so PHP files are not checked. Add a lint step before the deploy; the README has the snippet (Upgrading from v1)."
-	fi
 	[ -n "${SSH_USER}" ] || fail "SSH_USER is missing. Pressable and custom: the SSH username. WP Engine: the environment name."
 	REMOTE_PATH="${REMOTE_PATH:-""}"
 	SRC_PATH="${SRC_PATH:-"."}"
@@ -32,13 +29,20 @@ validate() {
 	SCRIPT="${SCRIPT:-""}"
 	SSH_PORT="${SSH_PORT:-"22"}"
 	PROTECT="${PROTECT:-""}"
+	PHP_LINT="${PHP_LINT:-"false"}"
+	PHP_VERSION="${PHP_VERSION:-"8.4"}"
 	DRY_RUN="${DRY_RUN:-"false"}"
 	DEBUG="${DEBUG:-"false"}"
 
 	[[ "${SSH_PRIVATE_KEY}" == *"PRIVATE KEY-----"* ]] || fail "SSH_PRIVATE_KEY doesn't look like a private key. Paste the whole private key file, including the -----BEGIN and -----END lines, not the .pub file."
 	[[ "${SSH_PORT}" =~ ^[0-9]+$ ]] || fail "SSH_PORT must be a number, got '${SSH_PORT}'."
 	[ -d "${SRC_PATH}" ] || fail "SRC_PATH '${SRC_PATH}' is not a directory."
-	[ -z "${PHP_VERSION}" ] || is_true "${PHP_LINT}" || echo "::warning::PHP_VERSION was removed in v2 with PHP_LINT and is ignored."
+	if is_true "${PHP_LINT}"; then
+		case "${PHP_VERSION}" in
+		8.3 | 8.4 | 8.5) ;;
+		*) fail "PHP_VERSION '${PHP_VERSION}' is not supported for linting. Use 8.3, 8.4 or 8.5, or lint in a previous step with shivammathur/setup-php." ;;
+		esac
+	fi
 
 	# The safety rules compare paths, so they need one spelling for each:
 	# ".", "./wp-content" and "wp-content//" are the root and wp-content
@@ -137,6 +141,7 @@ print_info() {
 	echo "* Flags: ${FLAGS_ARRAY[*]}"
 	echo "* Never uploaded: ${NEVER_UPLOAD[*]}"
 	echo "* Never deleted on the server: ${PROTECTED_HERE[*]:-(nothing under this REMOTE_PATH)}"
+	echo "* PHP linting: ${PHP_LINT}$(is_true "${PHP_LINT}" && echo " (PHP ${PHP_VERSION})")"
 	echo "* Cache clear: ${CACHE_CLEAR}${CACHE_COMMAND:+ (${CACHE_COMMAND})}"
 	echo "* Post-deploy script: ${SCRIPT}"
 	echo "* Host key check: $([ -n "${SSH_KNOWN_HOSTS}" ] && echo "strict (SSH_KNOWN_HOSTS)" || echo "trust on first use")"
@@ -283,6 +288,35 @@ stat_count() {
 	grep -m1 "^$1:" "$2" | sed 's/^[^:]*: *//; s/,//g; s/[^0-9].*//' || true
 }
 
+# Check PHP linting
+check_lint() {
+	if ! is_true "${PHP_LINT}"; then
+		echo "Skipping PHP linting."
+		return
+	fi
+
+	# PHP 8.4 ships in the image; other versions are installed on demand
+	local php_bin="php${PHP_VERSION//./}"
+	if ! command -v "${php_bin}" >/dev/null; then
+		echo "Installing PHP ${PHP_VERSION}..."
+		apk add --no-cache --quiet "${php_bin}" || fail "Could not install PHP ${PHP_VERSION}."
+	fi
+
+	echo "Starting PHP linting with $("${php_bin}" -r 'echo PHP_VERSION;')..."
+	local failed=0 count=0 file output
+	while IFS= read -r -d '' file; do
+		count=$((count + 1))
+		if ! output=$("${php_bin}" -l "$file" 2>&1); then
+			echo "$output"
+			echo "::error file=${file}::PHP linting failed"
+			failed=1
+		fi
+	done < <(find "${SRC_PATH}" -name "*.php" -type f -print0)
+
+	[ "$failed" -eq 0 ] || fail "PHP linting failed."
+	echo "PHP linting completed successfully (${count} files)."
+}
+
 # Sync files to the server using rsync
 sync_files() {
 	local rsync_log rsync_args
@@ -354,6 +388,7 @@ run_remote() {
 # Main execution
 validate
 init
+check_lint
 setup_ssh
 sync_files
 run_remote

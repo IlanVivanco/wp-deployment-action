@@ -59,14 +59,14 @@ inputs:
     default: "FALSE"
     required: false
 
-  # After the deploy
+  # Checks and after the deploy
   PHP_LINT:
-    description: "Removed in v2 and ignored, with a warning. Lint in a step before the deploy (see the README)."
-    default: ""
+    description: "Set to 'TRUE' to check the syntax of every PHP file in SRC_PATH before uploading. Defaults to 'FALSE'."
+    default: "FALSE"
     required: false
   PHP_VERSION:
-    description: "Removed in v2 with PHP_LINT. Ignored, with a warning."
-    default: ""
+    description: "PHP version used by PHP_LINT: '8.3', '8.4' or '8.5'. Defaults to '8.4'."
+    default: "8.4"
     required: false
   SCRIPT:
     description: "Script inside SRC_PATH to run on the server with bash after the upload, e.g. 'bin/post-deploy.sh'."

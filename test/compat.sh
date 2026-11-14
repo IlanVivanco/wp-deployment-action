@@ -46,7 +46,7 @@ docker network create "$NET" >/dev/null
 
 # Fixture: a theme repository like the ones that use @v1, built before deploying
 make_repo() {
-	local dir="$1" ignore="$2" script="$3"
+	local dir="$1" ignore="$2" script="$3" php_error="$4"
 	rm -rf "$dir"
 	mkdir -p "$dir"/{inc,assets/css,bin,src,node_modules/pkg,vendor/lib,.github/workflows}
 	echo '<?php // theme' >"$dir/style.php"
@@ -59,6 +59,7 @@ make_repo() {
 	echo '{}' >"$dir/package.json"
 	echo '# readme' >"$dir/README.md"
 	echo 'echo build' >"$dir/bin/deploy-build.sh"
+	[ "$php_error" = yes ] && echo '<?php echo 1' >"$dir/inc/broken.php"
 
 	case "$ignore" in
 	full) printf '%s\n' '/node_modules/' '/vendor/' '/dist/' '/bin/deploy*' '.*' 'composer*' 'gulp*' 'package*' 'phpcs*' 'README*' 'src' ;;
@@ -95,7 +96,7 @@ run_with() {
 		-e HOME=/github/home -v "$WORK/home-$label:/github/home" \
 		-v "$WORK/repo:/github/workspace" -w /github/workspace \
 		-e SSH_PRIVATE_KEY="$(cat "$WORK/key")" -e SSH_USER=deploy \
-		-e CACHE_CLEAR=true -e SCRIPT=bin/post-deploy.sh \
+		-e PHP_LINT=true -e CACHE_CLEAR=true -e SCRIPT=bin/post-deploy.sh \
 		-e REMOTE_PATH=wp-content/themes/my-theme \
 		"$@" "$image" >"$WORK/$label.log" 2>&1
 	local status=$?
@@ -150,7 +151,9 @@ for server in "${SERVERS[@]}"; do
 	compare "wpengine, --delete, full .deployignore, script cds into the theme" -e SERVER_TYPE=wpengine -e "FLAGS=$FLAGS_DELETE"
 	make_repo "$WORK/repo" empty template
 	compare "wpengine, no --delete, empty .deployignore, template script" -e SERVER_TYPE=wpengine -e "FLAGS=$FLAGS_KEEP"
-	make_repo "$WORK/repo" full template
+	make_repo "$WORK/repo" full template yes
+	compare "pressable, PHP syntax error stops the deploy" -e SERVER_TYPE=pressable -e "FLAGS=$FLAGS_DELETE"
+	make_repo "$WORK/repo" full template no
 	compare "pressable, SCRIPT that is not uploaded" -e SERVER_TYPE=pressable -e "FLAGS=$FLAGS_DELETE" -e SCRIPT=bin/deploy-build.sh
 done
 

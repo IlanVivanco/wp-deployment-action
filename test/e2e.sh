@@ -62,11 +62,12 @@ for _ in $(seq 20); do docker exec "$SRV" sh -c 'nc -z 127.0.0.1 2222' 2>/dev/nu
 srv 'mkdir -p ~/htdocs ~/sites/deploy/wp-content/plugins ~/www/wp-content/themes/my-theme ~/www/wp-content/mu-plugins'
 KNOWN_HOSTS="$(docker run --rm --network "$NET" --entrypoint ssh-keyscan "$ACTION_IMAGE" -p 2222 custom.test 2>/dev/null)"
 
-mkdir -p "$WORK/home" "$WORK/ws/theme/inc" "$WORK/ws/mu-plugins" "$WORK/ws/bin" \
+mkdir -p "$WORK/home" "$WORK/ws/theme/inc" "$WORK/ws/mu-plugins" "$WORK/ws/bad" "$WORK/ws/bin" \
 	"$WORK/ws/site/.git" "$WORK/ws/site/.github" "$WORK/ws/site/wp-content/themes/t"
 echo '<?php // theme' >"$WORK/ws/theme/style.php"
 echo '<?php // inc' >"$WORK/ws/theme/inc/a.php"
 echo '<?php // mu' >"$WORK/ws/mu-plugins/my-mu-plugin.php"
+echo '<?php echo 1' >"$WORK/ws/bad/broken.php"
 # A whole site, with files that must never be uploaded
 echo '<?php // index' >"$WORK/ws/site/index.php"
 echo '<?php // theme' >"$WORK/ws/site/wp-content/themes/t/style.php"
@@ -98,7 +99,7 @@ echo "WP Engine: default cache commands and SCRIPT"
 f=$FAILED
 srv ': >~/wp.log'
 run_action -e SERVER_TYPE=wpengine -e SRC_PATH=. -e REMOTE_PATH=wp-content/plugins/x \
-	-e "FLAGS=-azrh --exclude=github_output --exclude=site" -e CACHE_CLEAR=true -e SCRIPT=bin/post.sh
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad --exclude=site" -e CACHE_CLEAR=true -e SCRIPT=bin/post.sh
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "files land in sites/<id>" 'srv "test -f ~/sites/deploy/wp-content/plugins/x/theme/style.php"'
 check "runs the script, executable" 'srv "test -f ~/script-ran"'
@@ -142,12 +143,12 @@ echo "Custom: BASE_PATH with spaces and shell syntax stays literal"
 f=$FAILED
 srv 'rm -f ~/script-ran ~/INJECTED; mkdir -p ~/"site root" ~/"\$(touch ~/INJECTED)x"'
 run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BASE_PATH=~/site root" \
-	-e "FLAGS=-azrh --exclude=github_output --exclude=site" -e SCRIPT=bin/post.sh
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad --exclude=site" -e SCRIPT=bin/post.sh
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "deploys under the path with a space" 'srv "test -f ~/\"site root\"/bin/post.sh"'
 check "runs the script there" 'srv "test -f ~/script-ran"'
 run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e 'BASE_PATH=~/$(touch ~/INJECTED)x' \
-	-e "FLAGS=-azrh --exclude=github_output --exclude=site" -e SCRIPT=bin/post.sh
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad --exclude=site" -e SCRIPT=bin/post.sh
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "does not run command substitutions" '! srv "test -e ~/INJECTED"'
 show_log_on_failure "$f"
@@ -157,7 +158,7 @@ f=$FAILED
 srv 'rm -f ~/script-ran; mkdir -p ~/abs/public/wp-content/themes'
 run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e BASE_PATH=/home/deploy/abs/public \
 	-e SRC_PATH=. -e REMOTE_PATH=wp-content/themes/my-theme \
-	-e "FLAGS=-azrh --exclude=github_output --exclude=site" -e SCRIPT=bin/post.sh
+	-e "FLAGS=-azrh --exclude=github_output --exclude=bad --exclude=site" -e SCRIPT=bin/post.sh
 check "exits 0" '[ "$STATUS" -eq 0 ]'
 check "files land under the absolute path" 'srv "test -f ~/abs/public/wp-content/themes/my-theme/theme/style.php"'
 check "runs the script there" 'srv "test -f ~/script-ran"'
@@ -240,14 +241,24 @@ run_action -e SERVER_TYPE=custom -e SSH_HOST=custom.test -e SSH_PORT=2222 -e "BA
 check "normal exclude rules still work" '[ "$STATUS" -eq 0 ]'
 show_log_on_failure "$f"
 
+echo "PHP_LINT"
+f=$FAILED
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=bad -e DRY_RUN=TRUE
+check "is off by default" '[ "$STATUS" -eq 0 ] && grep -q "Skipping PHP linting" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE
+check "lints with PHP 8.4 by default" '[ "$STATUS" -eq 0 ] && grep -q "Starting PHP linting with 8.4" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE -e PHP_VERSION=8.3
+check "PHP_VERSION picks the lint binary" '[ "$STATUS" -eq 0 ] && grep -q "Starting PHP linting with 8.3" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE -e PHP_VERSION=8.2
+check "rejects unsupported versions" '[ "$STATUS" -ne 0 ] && grep -q "PHP_VERSION .8.2. is not supported" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=bad -e PHP_LINT=TRUE
+check "a lint failure stops the deploy" '[ "$STATUS" -ne 0 ] && grep -q "PHP linting failed" "$WORK/out.log" && ! srv "test -e ~/htdocs/broken.php"'
+show_log_on_failure "$f"
+
 echo "Removed v1 inputs"
 f=$FAILED
-run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=TRUE -e PHP_VERSION=8.3 -e DRY_RUN=TRUE
-check "PHP_LINT only warns, once" '[ "$STATUS" -eq 0 ] && grep -q "::warning::PHP_LINT was removed in v2" "$WORK/out.log" && ! grep -q "PHP_VERSION was removed" "$WORK/out.log"'
 run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e SSH_USER= -e SERVER_ID=deploy
 check "SERVER_ID fails with the new name" '[ "$STATUS" -ne 0 ] && grep -q "SERVER_ID was renamed to SSH_USER" "$WORK/out.log"'
-run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e PHP_LINT=FALSE -e PHP_VERSION=8.3 -e DRY_RUN=TRUE
-check "PHP_VERSION alone only warns" '[ "$STATUS" -eq 0 ] && grep -q "::warning::PHP_VERSION was removed" "$WORK/out.log"'
 show_log_on_failure "$f"
 
 echo "Validation errors"
