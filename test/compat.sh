@@ -6,6 +6,7 @@
 # servers with different rsync versions, and checks that both leave the server
 # in the same state.
 # Usage: test/compat.sh [ref] (needs Docker). KEEP=1 keeps the temp files.
+# TEST_IMAGE=<image> tests an image that is already built instead of the working tree.
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -14,7 +15,7 @@ WORK="$(mktemp -d)"
 NET="wpda-compat-$$"
 SRV="wpda-compat-srv-$$"
 OLD_IMAGE="wpda-compat-old"
-NEW_IMAGE="wpda-compat-new"
+NEW_IMAGE="${TEST_IMAGE:-wpda-compat-new}"
 SERVERS=(alpine ubuntu22.04 ubuntu20.04)
 PASSED=0
 FAILED=0
@@ -34,7 +35,7 @@ echo "Building images ($REF and working tree)..."
 mkdir -p "$WORK/old"
 git -C "$ROOT" archive "$REF" | tar -x -C "$WORK/old"
 docker build -q -t "$OLD_IMAGE" "$WORK/old" >/dev/null
-docker build -q -t "$NEW_IMAGE" "$ROOT" >/dev/null
+[ -n "$TEST_IMAGE" ] || docker build -q -t "$NEW_IMAGE" "$ROOT" >/dev/null
 docker build -q -t wpda-compat-sshd-alpine "$ROOT/test/sshd" >/dev/null
 for version in 22.04 20.04; do
 	docker build -q --build-arg UBUNTU="$version" -t "wpda-compat-sshd-ubuntu$version" \

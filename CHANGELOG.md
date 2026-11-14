@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.2.0
+
+### Changed
+
+- The action runs a published image (`ghcr.io/ilanvivanco/wp-deployment-action`) instead of building the Dockerfile on every run. Each release has its own image, so the tools inside never change under a version, and runs start faster.
+
+### Added
+
+- A release workflow that tests the image, publishes it for amd64 and arm64, creates the `vX.Y.Z` tag and moves `vX` and `vX.Y` to it.
+
 ## v1.1.0
 
 ### Added
