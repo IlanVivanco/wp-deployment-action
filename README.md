@@ -147,6 +147,8 @@ If your host uses a port other than 22, add `SSH_PORT`.
 
 Push to `main`, or run the workflow by hand from the **Actions** tab. With `DRY_RUN: TRUE` the log lists the files that would be uploaded, and nothing changes on the server. When the list looks right, remove the `DRY_RUN` line and push again.
 
+`@v1` always gets the latest 1.x release, with fixes and no breaking changes. To stay on an exact release, use the full version, e.g. `@v1.2.0`.
+
 ## Recipes
 
 ### Theme or plugin
@@ -388,6 +390,18 @@ shellcheck entrypoint.sh test/e2e.sh test/compat.sh test/sshd/entrypoint.sh
 test/e2e.sh
 test/compat.sh # Same server result as v1, against several rsync versions
 ```
+
+### Releasing
+
+Releases are published by the **Release** workflow. It tests the image, pushes it to GHCR, and only then creates the tags, so a tag never points to an image that doesn't exist.
+
+1. Add a `## vX.Y.Z` section at the top of `CHANGELOG.md` and merge it to `main`.
+2. Go to **Actions > Release > Run workflow**, on `main`, and enter the version, e.g. `1.2.0`.
+3. The workflow creates `vX.Y.Z`, moves `vX` and `vX.Y` to it, and publishes the GitHub release with the changelog section.
+
+The first time, the image is created as a private package and the workflow stops at "Check that anyone can pull the image". Set the package to public in **Your profile > Packages > wp-deployment-action > Package settings** and run the workflow again.
+
+The tagged commit is `main` plus one change: `action.yml` uses the published image instead of the `Dockerfile`. `main` keeps building the `Dockerfile`, so `uses: IlanVivanco/wp-deployment-action@main` and the tests always run the current code.
 
 ## License & Attribution
 
