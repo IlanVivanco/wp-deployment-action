@@ -91,7 +91,7 @@ outputs:
 
 runs:
   using: "docker"
-  image: "Dockerfile"
+  image: "docker://ghcr.io/ilanvivanco/wp-deployment-action:1.2.0"
   env:
     SERVER_TYPE: ${{ inputs.SERVER_TYPE }}
     SSH_USER: ${{ inputs.SSH_USER }}
