@@ -10,6 +10,10 @@
 
 - A release workflow that tests the image, publishes it for amd64 and arm64, creates the `vX.Y.Z` tag and moves `vX` and `vX.Y` to it.
 
+### Fixed
+
+- An unreachable server fails after 60 seconds instead of waiting for the system timeout (over 2 minutes), and the error says what to check.
+
 ## v1.1.0
 
 ### Added
