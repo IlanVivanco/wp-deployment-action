@@ -54,7 +54,7 @@ Create `.github/workflows/deploy.yml` in your repository and copy the example fo
 
 #### Pressable
 
-`SERVER_ID` is the site's SSH/SFTP username, shown in MyPressable next to the SSH connection details.
+`SSH_USER` is the site's SSH/SFTP username, shown in MyPressable next to the SSH connection details.
 
 ```yml
 name: Deploy
@@ -72,7 +72,7 @@ jobs:
       - uses: IlanVivanco/wp-deployment-action@v1
         with:
           SERVER_TYPE: pressable
-          SERVER_ID: my-site-username
+          SSH_USER: my-site-username
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SRC_PATH: theme
           REMOTE_PATH: wp-content/themes/my-theme
@@ -81,7 +81,7 @@ jobs:
 
 #### WP Engine
 
-`SERVER_ID` is the environment name, the `my-env` in `my-env.wpengine.com`. The action connects to `my-env@my-env.ssh.wpengine.net`.
+`SSH_USER` is the environment name, the `my-env` in `my-env.wpengine.com`: on WP Engine the SSH user is the environment itself. The action connects to `my-env@my-env.ssh.wpengine.net`.
 
 ```yml
 name: Deploy
@@ -99,7 +99,7 @@ jobs:
       - uses: IlanVivanco/wp-deployment-action@v1
         with:
           SERVER_TYPE: wpengine
-          SERVER_ID: my-env
+          SSH_USER: my-env
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SRC_PATH: theme
           REMOTE_PATH: wp-content/themes/my-theme
@@ -111,7 +111,7 @@ jobs:
 A custom server needs three things that Pressable and WP Engine already know:
 
 - `SSH_HOST`: the server you connect to, e.g. `example.com`.
-- `SERVER_ID`: the SSH username.
+- `SSH_USER`: the SSH username.
 - `BASE_PATH`: the folder where WordPress is installed, the one that contains `wp-config.php`. A leading `~` means the SSH user's home folder, e.g. `~/www` or `~/public_html`.
 
 To find `BASE_PATH`, log in with `ssh -i deploy_key USER@HOST` and look for `wp-config.php`. If `pwd` prints `/home/user` and WordPress is in `/home/user/www`, use `~/www`.
@@ -133,7 +133,7 @@ jobs:
         with:
           SERVER_TYPE: custom
           SSH_HOST: example.com
-          SERVER_ID: ssh-user
+          SSH_USER: ssh-user
           BASE_PATH: '~/www'
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SRC_PATH: theme
@@ -172,7 +172,7 @@ Add one step per folder. Each step is a separate upload, so each can have its ow
         with:
           SERVER_TYPE: custom
           SSH_HOST: example.com
-          SERVER_ID: ssh-user
+          SSH_USER: ssh-user
           BASE_PATH: '~/www'
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SRC_PATH: theme
@@ -184,7 +184,7 @@ Add one step per folder. Each step is a separate upload, so each can have its ow
         with:
           SERVER_TYPE: custom
           SSH_HOST: example.com
-          SERVER_ID: ssh-user
+          SSH_USER: ssh-user
           BASE_PATH: '~/www'
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SRC_PATH: mu-plugins
@@ -291,10 +291,10 @@ Give the step an `id` and read its [outputs](#outputs):
 | Name              | Required      | Description                                                                                                            |
 | ----------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `SERVER_TYPE`     | Yes           | `pressable`, `wpengine` or `custom`.                                                                                   |
-| `SERVER_ID`       | Yes           | Pressable and custom: the SSH username. WP Engine: the environment name.                                               |
+| `SSH_USER`        | Yes           | Pressable and custom: the SSH username. WP Engine: the environment name.                                               |
 | `SSH_PRIVATE_KEY` | Yes           | The private key, from a secret: `${{ secrets.SSH_PRIVATE_KEY }}`.                                                      |
 | `SSH_HOST`        | With `custom` | The server to connect to, e.g. `example.com`. Ignored on Pressable and WP Engine.                                      |
-| `BASE_PATH`       | With `custom` | The WordPress root on the server, e.g. `~/www`. Ignored on Pressable (`~/htdocs`) and WP Engine (`sites/<SERVER_ID>`). |
+| `BASE_PATH`       | With `custom` | The WordPress root on the server, e.g. `~/www`. Ignored on Pressable (`~/htdocs`) and WP Engine (`sites/<SSH_USER>`). |
 | `SSH_PORT`        | No            | The SSH port. Default `22`.                                                                                            |
 | `SSH_KNOWN_HOSTS` | No            | The server's host key lines, so the action refuses to connect to an impostor. See [Host keys](#host-keys).             |
 
@@ -317,6 +317,10 @@ Give the step an `id` and read its [outputs](#outputs):
 | `CACHE_CLEAR`   | No                              | `TRUE` to clear the cache after the upload. Default `FALSE`.                                                                 |
 | `CACHE_COMMAND` | With `custom` and `CACHE_CLEAR` | Command that clears the cache. On Pressable and WP Engine it runs instead of the default. See [Clear the cache](#clear-the-cache). |
 | `DEBUG`         | No                              | `TRUE` for detailed SSH logs, useful when the connection fails. Default `FALSE`.                                             |
+
+### Renamed inputs
+
+`SERVER_ID` is now `SSH_USER`. Workflows that still use `SERVER_ID` keep working and show a notice; rename it when you next edit the workflow.
 
 ## Outputs
 
@@ -345,8 +349,8 @@ From then on, the deploy fails with `Host key verification failed` if the server
 | Error in the log                                       | What to check                                                                                                                                          |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `SSH_PRIVATE_KEY doesn't look like a private key`     | The secret holds the `.pub` file or only part of the key. Paste the whole `deploy_key` file, including the `-----BEGIN` and `-----END` lines. |
-| `Permission denied (publickey)`                        | The public key is not authorized for `SERVER_ID` on the server, or the secret doesn't hold the matching private key. Test it with `ssh -i deploy_key USER@HOST`. |
-| `Could not connect to ...`                             | Check `SSH_HOST`, `SSH_PORT` and `SERVER_ID`, and that your host doesn't block GitHub's servers. Set `DEBUG: TRUE` for details.                       |
+| `Permission denied (publickey)`                        | The public key is not authorized for `SSH_USER` on the server, or the secret doesn't hold the matching private key. Test it with `ssh -i deploy_key USER@HOST`. |
+| `Could not connect to ...`                             | Check `SSH_HOST`, `SSH_PORT` and `SSH_USER`, and that your host doesn't block GitHub's servers. Set `DEBUG: TRUE` for details.                       |
 | `Host key verification failed`                         | The server's key doesn't match `SSH_KNOWN_HOSTS`. See [Host keys](#host-keys).                                                                         |
 | `SSH_HOST is required` or `BASE_PATH is required`      | `SERVER_TYPE` is `custom` and that input is missing.                                                                                                   |
 | `CACHE_CLEAR is enabled but there is no cache command` | With `custom`, `CACHE_CLEAR: TRUE` needs `CACHE_COMMAND`.                                                                                              |

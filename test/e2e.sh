@@ -38,7 +38,7 @@ run_action() {
 		-e HOME=/github/home -v "$WORK/home:/github/home" \
 		-v "$WORK/ws:/github/workspace" -w /github/workspace \
 		-e GITHUB_OUTPUT=/github/workspace/github_output \
-		-e SSH_PRIVATE_KEY="$(cat "$WORK/key")" -e SERVER_ID=deploy \
+		-e SSH_PRIVATE_KEY="$(cat "$WORK/key")" -e SSH_USER=deploy \
 		"$@" "$ACTION_IMAGE" >"$WORK/out.log" 2>&1
 	STATUS=$?
 	set -e
@@ -193,6 +193,12 @@ run_action -e SERVER_TYPE=pressable -e SSH_PRIVATE_KEY="$(cat "$WORK/key.pub")"
 check "a public key instead of the private one fails clearly" '[ "$STATUS" -ne 0 ] && grep -q "doesn.t look like a private key" "$WORK/out.log"'
 run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e "FLAGS=-azrh --delete" -e DRY_RUN=TRUE
 check "--delete on the WordPress root warns" '[ "$STATUS" -eq 0 ] && grep -q "::warning::FLAGS has --delete and REMOTE_PATH is empty" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e SSH_USER= -e SERVER_ID=deploy -e DRY_RUN=TRUE
+check "SERVER_ID still works, with a notice" '[ "$STATUS" -eq 0 ] && grep -q "::notice::SERVER_ID is deprecated" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e SERVER_ID=other
+check "SSH_USER and a different SERVER_ID fail" '[ "$STATUS" -ne 0 ] && grep -q "both set and differ" "$WORK/out.log"'
+run_action -e SERVER_TYPE=pressable -e SRC_PATH=theme -e SSH_USER=
+check "missing SSH_USER fails clearly" '[ "$STATUS" -ne 0 ] && grep -q "SSH_USER is missing" "$WORK/out.log"'
 run_action -e SERVER_TYPE=kinsta
 check "unknown SERVER_TYPE fails" '[ "$STATUS" -ne 0 ] && grep -q "Unknown SERVER_TYPE" "$WORK/out.log"'
 run_action -e SERVER_TYPE=pressable -e SRC_PATH=bad -e PHP_LINT=TRUE

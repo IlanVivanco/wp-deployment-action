@@ -4,7 +4,9 @@
 
 ### Added
 
-- `SERVER_TYPE: custom` to deploy to any SSH server, with the new `SSH_HOST`, `BASE_PATH` and `CACHE_COMMAND` inputs.
+- `SSH_USER` input, which replaces `SERVER_ID`. `SERVER_ID` keeps working as an alias and shows a deprecation notice.
+
+- `SERVER_TYPE: custom` to deploy to any SSH server, with the new `SSH_HOST`, `BASE_PATH` and `CACHE_COMMAND` inputs and `SSH_USER`.
 - `SSH_PORT` input for every server type (defaults to 22).
 - `SSH_KNOWN_HOSTS` input to check the server's host key strictly.
 - `CACHE_COMMAND` input; it replaces the default cache command on Pressable and WP Engine.

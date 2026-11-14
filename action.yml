@@ -9,9 +9,14 @@ inputs:
   SERVER_TYPE:
     description: "Where you deploy: 'pressable', 'wpengine' or 'custom' (any other SSH server)."
     required: true
+  SSH_USER:
+    description: "Required. Pressable and custom: the SSH username. WP Engine: the environment name (the 'my-env' in my-env.wpengine.com)."
+    default: ""
+    required: false
   SERVER_ID:
-    description: "Pressable and custom: the SSH username. WP Engine: the environment name (the 'my-env' in my-env.wpengine.com)."
-    required: true
+    description: "Deprecated: the v1 name of SSH_USER. It still works; use SSH_USER instead."
+    default: ""
+    required: false
   SSH_PRIVATE_KEY:
     description: "The private SSH key, from a secret, e.g. secrets.SSH_PRIVATE_KEY. Its public key must be authorized on the server."
     required: true
@@ -89,6 +94,7 @@ runs:
   image: "Dockerfile"
   env:
     SERVER_TYPE: ${{ inputs.SERVER_TYPE }}
+    SSH_USER: ${{ inputs.SSH_USER }}
     SERVER_ID: ${{ inputs.SERVER_ID }}
     SSH_PRIVATE_KEY: ${{ inputs.SSH_PRIVATE_KEY }}
     SSH_HOST: ${{ inputs.SSH_HOST }}

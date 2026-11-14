@@ -19,7 +19,16 @@ is_true() {
 validate() {
 	[ -n "${SERVER_TYPE}" ] || fail "SERVER_TYPE variable missing from environment variables."
 	[ -n "${SSH_PRIVATE_KEY}" ] || fail "SSH_PRIVATE_KEY variable missing from environment variables."
-	[ -n "${SERVER_ID}" ] || fail "SERVER_ID variable missing from environment variables."
+	# SERVER_ID is the v1 name of SSH_USER and still works
+	if [ -n "${SERVER_ID}" ]; then
+		if [ -z "${SSH_USER}" ]; then
+			SSH_USER="${SERVER_ID}"
+			echo "::notice::SERVER_ID is deprecated and still works. Rename it to SSH_USER."
+		elif [ "${SSH_USER}" != "${SERVER_ID}" ]; then
+			fail "SSH_USER ('${SSH_USER}') and SERVER_ID ('${SERVER_ID}') are both set and differ. Use only SSH_USER."
+		fi
+	fi
+	[ -n "${SSH_USER}" ] || fail "SSH_USER is missing. Pressable and custom: the SSH username. WP Engine: the environment name."
 	REMOTE_PATH="${REMOTE_PATH:-""}"
 	SRC_PATH="${SRC_PATH:-"."}"
 	FLAGS="${FLAGS:-"-azvrhi --inplace --exclude='.*'"}"
@@ -53,8 +62,8 @@ init() {
 		DEFAULT_CACHE_COMMAND="wp --skip-plugins --skip-themes cache flush"
 		;;
 	WPENGINE)
-		SSH_HOST="${SERVER_ID}.ssh.wpengine.net"
-		SERVER_BASE_PATH="sites/${SERVER_ID}"
+		SSH_HOST="${SSH_USER}.ssh.wpengine.net"
+		SERVER_BASE_PATH="sites/${SSH_USER}"
 		DEFAULT_CACHE_COMMAND="wp --skip-plugins --skip-themes page-cache flush && wp --skip-plugins --skip-themes cdn-cache flush"
 		;;
 	CUSTOM)
@@ -81,9 +90,9 @@ init() {
 		CACHE_COMMAND=""
 	fi
 
-	SSH_USER="${SERVER_ID}@${SSH_HOST}"
+	SSH_REMOTE="${SSH_USER}@${SSH_HOST}"
 	SERVER_PATH="${SERVER_BASE_PATH}/${REMOTE_PATH}"
-	SERVER_DEST="${SSH_USER}:${SERVER_PATH}"
+	SERVER_DEST="${SSH_REMOTE}:${SERVER_PATH}"
 
 	parse_flags "$FLAGS"
 	if [ -z "${REMOTE_PATH}" ] && [[ " ${FLAGS_ARRAY[*]} " == *" --delete"* ]]; then
@@ -96,7 +105,7 @@ init() {
 print_info() {
 	echo "--- DEPLOYMENT INFO ---"
 	echo "* Deploying to: ${SERVER_TYPE}"
-	echo "* Server ID: ${SERVER_ID}"
+	echo "* SSH user: ${SSH_USER}"
 	echo "* SSH host: ${SSH_HOST}:${SSH_PORT}"
 	echo "* Source path: ${SRC_PATH}"
 	echo "* Destination path: ${SERVER_DEST}"
@@ -185,14 +194,14 @@ setup_ssh() {
 	fi
 
 	# Create multiplex connection
-	ssh -nNf "${SSH_OPTS[@]}" -o ControlMaster=yes "${SSH_USER}" || fail "Could not connect to ${SSH_USER} on port ${SSH_PORT}."
+	ssh -nNf "${SSH_OPTS[@]}" -o ControlMaster=yes "${SSH_REMOTE}" || fail "Could not connect to ${SSH_REMOTE} on port ${SSH_PORT}."
 	echo "Multiplex SSH connection established."
 }
 
 # Close the multiplex connection and remove the key
 cleanup() {
 	{ set +x; } 2>/dev/null
-	ssh -O exit -o ControlPath="${SSH_PATH}/ctl-%C" -p "${SSH_PORT}" "${SSH_USER}" 2>/dev/null || true
+	ssh -O exit -o ControlPath="${SSH_PATH}/ctl-%C" -p "${SSH_PORT}" "${SSH_REMOTE}" 2>/dev/null || true
 	rm -rf "${SSH_PATH}"
 }
 
@@ -272,7 +281,7 @@ run_remote() {
 	local remote_command
 	remote_command="$(printf '%s && ' "${commands[@]}")"
 	# shellcheck disable=SC2029 # the command is built client-side on purpose
-	ssh "${SSH_OPTS[@]}" "${SSH_USER}" "${remote_command% && }" || fail "Post-deploy commands failed on the server."
+	ssh "${SSH_OPTS[@]}" "${SSH_REMOTE}" "${remote_command% && }" || fail "Post-deploy commands failed on the server."
 }
 
 # Main execution
